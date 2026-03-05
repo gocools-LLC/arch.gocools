@@ -1,6 +1,7 @@
 package lifecycle
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -105,6 +106,9 @@ func TestDestroyProdRequiresManualOverride(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected prod destroy to require manual override")
+	}
+	if !strings.Contains(err.Error(), "policy deny") {
+		t.Fatalf("expected explicit policy deny reason, got %v", err)
 	}
 
 	_, err = service.Apply(Request{

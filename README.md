@@ -53,6 +53,7 @@ gocools:owner
 - [Terraform Export](docs/terraform-export.md)
 - [Stack Lifecycle](docs/stack-lifecycle.md)
 - [Drift Detection](docs/drift-detection.md)
+- [Policy Engine](docs/policy-engine.md)
 - [Roadmap](docs/roadmap.md)
 - [RFC-0001](docs/rfc/rfc-0001-platform.md)
 

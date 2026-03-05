@@ -101,3 +101,13 @@ with severity and field-level change details.
 See:
 
 - [drift-detection.md](drift-detection.md)
+
+## Policy Engine
+
+Arch enforces operation policy checks before state mutation.
+
+Current baseline includes production destroy protection with explicit deny reasons.
+
+See:
+
+- [policy-engine.md](policy-engine.md)

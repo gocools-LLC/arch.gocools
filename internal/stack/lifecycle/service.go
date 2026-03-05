@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	policyengine "github.com/gocools-LLC/arch.gocools/internal/policy/engine"
 	policytags "github.com/gocools-LLC/arch.gocools/internal/policy/tags"
 )
 
@@ -60,6 +61,7 @@ type Service struct {
 	mu        sync.RWMutex
 	stacks    map[string]Stack
 	auditLogs []AuditEntry
+	policy    *policyengine.Engine
 	now       func() time.Time
 }
 
@@ -67,6 +69,7 @@ func NewService() *Service {
 	return &Service{
 		stacks:    map[string]Stack{},
 		auditLogs: []AuditEntry{},
+		policy:    policyengine.New(),
 		now:       time.Now,
 	}
 }
@@ -88,6 +91,16 @@ func (s *Service) Apply(request Request) (Result, error) {
 	stack, exists := s.stacks[request.StackID]
 	if exists && stack.Environment != request.Environment {
 		return Result{}, errors.New("stack environment mismatch")
+	}
+
+	policyDecision := s.policy.Evaluate(policyengine.Input{
+		Action:         string(request.Action),
+		Environment:    request.Environment,
+		Confirm:        request.Confirm,
+		ManualOverride: request.ManualOverride,
+	})
+	if !policyDecision.Allowed {
+		return Result{}, errors.New(policyDecision.Reason)
 	}
 
 	switch request.Action {
@@ -162,9 +175,6 @@ func (s *Service) Apply(request Request) (Result, error) {
 		}
 		if !request.Confirm {
 			return Result{}, errors.New("destroy requires confirm=true")
-		}
-		if request.Environment == "prod" && !request.ManualOverride {
-			return Result{}, errors.New("destroy in prod requires manual_override=true")
 		}
 
 		destroyed := stack
