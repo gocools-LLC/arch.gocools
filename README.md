@@ -58,6 +58,7 @@ gocools:owner
 - [Stack Lifecycle](docs/stack-lifecycle.md)
 - [Drift Detection](docs/drift-detection.md)
 - [Policy Engine](docs/policy-engine.md)
+- [Release Checklist](docs/release-checklist.md)
 - [Roadmap](docs/roadmap.md)
 - [RFC-0001](docs/rfc/rfc-0001-platform.md)
 
