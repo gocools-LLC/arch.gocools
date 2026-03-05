@@ -45,3 +45,16 @@ Arch includes a normalized AWS discovery engine in `internal/discovery/aws` for:
 - RDS DB instances
 
 The engine returns stable resource identifiers and supports paginated API traversal with throttling retries.
+
+## Graph API
+
+Arch exposes a versioned graph schema via API:
+
+- endpoint: `GET /api/v1/graph`
+- filter support: `stack_id`, `environment`
+- schema version: `arch.gocools/v1alpha1`
+
+See:
+
+- [graph-schema.md](graph-schema.md)
+- [api/graph.md](api/graph.md)

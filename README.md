@@ -12,6 +12,8 @@ Cloud architecture visualizer and control plane for safe stack operations.
 
 ```bash
 go run ./cmd/arch
+curl -s localhost:8081/healthz
+curl -s "localhost:8081/api/v1/graph?stack_id=dev-stack&environment=dev"
 ```
 
 ## Repository Layout
@@ -38,6 +40,8 @@ gocools:owner
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [Graph Schema](docs/graph-schema.md)
+- [Graph API](docs/api/graph.md)
 - [AWS Discovery Engine](docs/discovery-engine.md)
 - [Roadmap](docs/roadmap.md)
 - [RFC-0001](docs/rfc/rfc-0001-platform.md)
