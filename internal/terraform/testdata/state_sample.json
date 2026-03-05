@@ -1,0 +1,64 @@
+{
+  "values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_vpc.main",
+          "mode": "managed",
+          "type": "aws_vpc",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "id": "vpc-123",
+            "arn": "arn:aws:ec2:us-east-1:123:vpc/vpc-123",
+            "tags": {
+              "Name": "main-vpc",
+              "gocools:stack-id": "dev-stack",
+              "gocools:environment": "dev"
+            }
+          }
+        }
+      ],
+      "child_modules": [
+        {
+          "address": "module.compute",
+          "resources": [
+            {
+              "address": "module.compute.aws_instance.app",
+              "mode": "managed",
+              "type": "aws_instance",
+              "name": "app",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "values": {
+                "id": "i-abc123",
+                "arn": "arn:aws:ec2:us-east-1:123:instance/i-abc123",
+                "availability_zone": "us-east-1a",
+                "tags": {
+                  "Name": "app-instance",
+                  "gocools:stack-id": "dev-stack",
+                  "gocools:environment": "dev"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "address": "module.db",
+          "resources": [
+            {
+              "address": "module.db.random_id.suffix",
+              "mode": "managed",
+              "type": "random_id",
+              "name": "suffix",
+              "provider_name": "registry.terraform.io/hashicorp/random",
+              "values": {
+                "id": "abcd"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+

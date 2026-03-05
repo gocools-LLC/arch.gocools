@@ -58,3 +58,11 @@ See:
 
 - [graph-schema.md](graph-schema.md)
 - [api/graph.md](api/graph.md)
+
+## Terraform Import
+
+Arch includes a Terraform state importer that converts Terraform state resources into normalized architecture graph resources.
+
+See:
+
+- [terraform-import.md](terraform-import.md)

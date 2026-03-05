@@ -43,6 +43,7 @@ gocools:owner
 - [Graph Schema](docs/graph-schema.md)
 - [Graph API](docs/api/graph.md)
 - [AWS Discovery Engine](docs/discovery-engine.md)
+- [Terraform State Import](docs/terraform-import.md)
 - [Roadmap](docs/roadmap.md)
 - [RFC-0001](docs/rfc/rfc-0001-platform.md)
 
