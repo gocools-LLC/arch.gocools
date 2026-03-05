@@ -3,7 +3,10 @@
 Cloud architecture visualizer and control plane for safe stack operations.
 
 ## Features
-- AWS infrastructure discovery\n- interactive architecture graph\n- Terraform import/export workflow\n- stack lifecycle management with policy enforcement
+- AWS infrastructure discovery
+- interactive architecture graph
+- Terraform import/export workflow
+- stack lifecycle management with policy enforcement
 
 ## Quick Start
 
