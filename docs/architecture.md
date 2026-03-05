@@ -74,3 +74,16 @@ Arch includes graph-to-Terraform export that emits deterministic configuration a
 See:
 
 - [terraform-export.md](terraform-export.md)
+
+## Stack Lifecycle Control
+
+Arch includes guarded stack operations with audit logging:
+
+- `create`, `update`, `scale`, `destroy`
+- `confirm` enforcement for destroy
+- production destroy protection via `manual_override`
+- dry-run execution mode
+
+See:
+
+- [stack-lifecycle.md](stack-lifecycle.md)

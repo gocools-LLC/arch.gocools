@@ -14,6 +14,9 @@ Cloud architecture visualizer and control plane for safe stack operations.
 go run ./cmd/arch
 curl -s localhost:8081/healthz
 curl -s "localhost:8081/api/v1/graph?stack_id=dev-stack&environment=dev"
+curl -s -X POST localhost:8081/api/v1/stacks/operations \
+  -H 'content-type: application/json' \
+  -d '{"action":"create","stack_id":"dev-stack","environment":"dev","actor":"alice"}'
 ```
 
 ## Repository Layout
@@ -45,6 +48,7 @@ gocools:owner
 - [AWS Discovery Engine](docs/discovery-engine.md)
 - [Terraform State Import](docs/terraform-import.md)
 - [Terraform Export](docs/terraform-export.md)
+- [Stack Lifecycle](docs/stack-lifecycle.md)
 - [Roadmap](docs/roadmap.md)
 - [RFC-0001](docs/rfc/rfc-0001-platform.md)
 

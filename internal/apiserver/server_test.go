@@ -1,6 +1,7 @@
 package apiserver
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gocools-LLC/arch.gocools/internal/discovery/model"
 	"github.com/gocools-LLC/arch.gocools/internal/graph"
+	"github.com/gocools-LLC/arch.gocools/internal/stack/lifecycle"
 )
 
 func TestHealthz(t *testing.T) {
@@ -83,5 +85,53 @@ func TestGraphEndpointSupportsStackAndEnvironmentFilters(t *testing.T) {
 	}
 	if payload.Nodes[0].ID != "resource-dev" {
 		t.Fatalf("expected resource-dev node, got %q", payload.Nodes[0].ID)
+	}
+}
+
+func TestStackOperationsEndpoint(t *testing.T) {
+	handler := New(Config{
+		Version:      "test-version",
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		StackService: lifecycle.NewService(),
+	}).Handler
+
+	createBody := `{"action":"create","stack_id":"dev-stack","environment":"dev","actor":"alice","replicas":2}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/operations", bytes.NewBufferString(createBody))
+	createRes := httptest.NewRecorder()
+	handler.ServeHTTP(createRes, createReq)
+
+	if createRes.Code != http.StatusOK {
+		t.Fatalf("expected create status %d, got %d body=%s", http.StatusOK, createRes.Code, createRes.Body.String())
+	}
+
+	destroyBody := `{"action":"destroy","stack_id":"dev-stack","environment":"dev","actor":"alice","confirm":true}`
+	destroyReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/operations", bytes.NewBufferString(destroyBody))
+	destroyRes := httptest.NewRecorder()
+	handler.ServeHTTP(destroyRes, destroyReq)
+
+	if destroyRes.Code != http.StatusOK {
+		t.Fatalf("expected destroy status %d, got %d body=%s", http.StatusOK, destroyRes.Code, destroyRes.Body.String())
+	}
+}
+
+func TestStackDestroyProdRequiresManualOverride(t *testing.T) {
+	handler := New(Config{
+		Version:      "test-version",
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		StackService: lifecycle.NewService(),
+	}).Handler
+
+	createBody := `{"action":"create","stack_id":"prod-stack","environment":"prod","actor":"alice"}`
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/operations", bytes.NewBufferString(createBody))
+	createRes := httptest.NewRecorder()
+	handler.ServeHTTP(createRes, createReq)
+
+	destroyBody := `{"action":"destroy","stack_id":"prod-stack","environment":"prod","actor":"alice","confirm":true}`
+	destroyReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/operations", bytes.NewBufferString(destroyBody))
+	destroyRes := httptest.NewRecorder()
+	handler.ServeHTTP(destroyRes, destroyReq)
+
+	if destroyRes.Code != http.StatusBadRequest {
+		t.Fatalf("expected prod destroy rejection status %d, got %d body=%s", http.StatusBadRequest, destroyRes.Code, destroyRes.Body.String())
 	}
 }

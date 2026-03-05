@@ -3,6 +3,7 @@ package apiserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -10,10 +11,15 @@ import (
 
 	"github.com/gocools-LLC/arch.gocools/internal/discovery/model"
 	"github.com/gocools-LLC/arch.gocools/internal/graph"
+	"github.com/gocools-LLC/arch.gocools/internal/stack/lifecycle"
 )
 
 type GraphQueryService interface {
 	Query(ctx context.Context, query graph.Query) (graph.Graph, error)
+}
+
+type StackLifecycleService interface {
+	Apply(request lifecycle.Request) (lifecycle.Result, error)
 }
 
 type Config struct {
@@ -21,6 +27,7 @@ type Config struct {
 	Version      string
 	Logger       *slog.Logger
 	GraphService GraphQueryService
+	StackService StackLifecycleService
 }
 
 type statusResponse struct {
@@ -53,11 +60,16 @@ func New(cfg Config) *http.Server {
 	if graphService == nil {
 		graphService = graph.NewService(graph.NewStaticResourceProvider(defaultResources()))
 	}
+	stackService := cfg.StackService
+	if stackService == nil {
+		stackService = lifecycle.NewService()
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", statusHandler(version, "ok"))
 	mux.HandleFunc("/readyz", statusHandler(version, "ready"))
 	mux.HandleFunc("/api/v1/graph", graphHandler(graphService))
+	mux.HandleFunc("/api/v1/stacks/operations", stackOperationHandler(stackService))
 
 	return &http.Server{
 		Addr:              addr,
@@ -94,6 +106,33 @@ func graphHandler(service GraphQueryService) http.HandlerFunc {
 		})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: err.Error()})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+func stackOperationHandler(service StackLifecycleService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
+			return
+		}
+
+		var request lifecycle.Request
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json payload"})
+			return
+		}
+
+		result, err := service.Apply(request)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, context.Canceled) {
+				status = http.StatusRequestTimeout
+			}
+			writeJSON(w, status, errorResponse{Error: err.Error()})
 			return
 		}
 
