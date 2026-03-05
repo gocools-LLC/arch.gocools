@@ -4,6 +4,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	policytags "github.com/gocools-LLC/arch.gocools/internal/policy/tags"
 )
 
 type Action string
@@ -19,6 +21,7 @@ type Stack struct {
 	ID          string            `json:"id"`
 	Environment string            `json:"environment"`
 	Replicas    int               `json:"replicas"`
+	Tags        map[string]string `json:"tags,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
@@ -28,6 +31,7 @@ type Request struct {
 	Environment    string            `json:"environment"`
 	Actor          string            `json:"actor"`
 	Replicas       int               `json:"replicas,omitempty"`
+	Tags           map[string]string `json:"tags,omitempty"`
 	Metadata       map[string]string `json:"metadata,omitempty"`
 	Confirm        bool              `json:"confirm,omitempty"`
 	DryRun         bool              `json:"dry_run,omitempty"`
@@ -96,7 +100,12 @@ func (s *Service) Apply(request Request) (Result, error) {
 			ID:          request.StackID,
 			Environment: request.Environment,
 			Replicas:    defaultReplicas(request.Replicas),
+			Tags:        cloneMap(request.Tags),
 			Metadata:    cloneMap(request.Metadata),
+		}
+
+		if err := policytags.Validate(newStack.Tags, request.StackID, request.Environment); err != nil {
+			return Result{}, err
 		}
 
 		if !request.DryRun {
@@ -111,11 +120,18 @@ func (s *Service) Apply(request Request) (Result, error) {
 		}
 
 		updated := stack
+		if len(request.Tags) > 0 {
+			updated.Tags = cloneMap(request.Tags)
+		}
 		for key, value := range request.Metadata {
 			if updated.Metadata == nil {
 				updated.Metadata = map[string]string{}
 			}
 			updated.Metadata[key] = value
+		}
+
+		if err := policytags.Validate(updated.Tags, request.StackID, request.Environment); err != nil {
+			return Result{}, err
 		}
 
 		if !request.DryRun {
@@ -193,6 +209,7 @@ func (s *Service) successResult(request Request, message string, stack *Stack) (
 	var stackCopy *Stack
 	if stack != nil {
 		copyValue := *stack
+		copyValue.Tags = cloneMap(copyValue.Tags)
 		copyValue.Metadata = cloneMap(copyValue.Metadata)
 		stackCopy = &copyValue
 	}

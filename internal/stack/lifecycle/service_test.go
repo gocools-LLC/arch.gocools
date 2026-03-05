@@ -15,6 +15,11 @@ func TestLifecycleCreateScaleUpdateDestroy(t *testing.T) {
 		Environment: "dev",
 		Actor:       "alice",
 		Replicas:    2,
+		Tags: map[string]string{
+			"gocools:stack-id":    "dev-stack",
+			"gocools:environment": "dev",
+			"gocools:owner":       "alice",
+		},
 		Metadata: map[string]string{
 			"owner": "team-a",
 		},
@@ -81,6 +86,11 @@ func TestDestroyProdRequiresManualOverride(t *testing.T) {
 		StackID:     "prod-stack",
 		Environment: "prod",
 		Actor:       "alice",
+		Tags: map[string]string{
+			"gocools:stack-id":    "prod-stack",
+			"gocools:environment": "prod",
+			"gocools:owner":       "alice",
+		},
 	})
 	if err != nil {
 		t.Fatalf("create failed: %v", err)
@@ -117,6 +127,11 @@ func TestDryRunDoesNotMutateStateAndAuditIncludesActorStack(t *testing.T) {
 		StackID:     "dev-stack",
 		Environment: "dev",
 		Actor:       "alice",
+		Tags: map[string]string{
+			"gocools:stack-id":    "dev-stack",
+			"gocools:environment": "dev",
+			"gocools:owner":       "alice",
+		},
 	})
 	if err != nil {
 		t.Fatalf("create failed: %v", err)
@@ -147,5 +162,22 @@ func TestDryRunDoesNotMutateStateAndAuditIncludesActorStack(t *testing.T) {
 	last := logs[len(logs)-1]
 	if last.Actor != "bob" || last.StackID != "dev-stack" {
 		t.Fatalf("expected audit actor/stack in log, got %+v", last)
+	}
+}
+
+func TestCreateFailsWithoutRequiredTags(t *testing.T) {
+	service := NewService()
+
+	_, err := service.Apply(Request{
+		Action:      ActionCreate,
+		StackID:     "dev-stack",
+		Environment: "dev",
+		Actor:       "alice",
+		Tags: map[string]string{
+			"gocools:stack-id": "dev-stack",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected required tag validation error")
 	}
 }

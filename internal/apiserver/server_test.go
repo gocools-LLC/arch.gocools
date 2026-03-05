@@ -95,7 +95,7 @@ func TestStackOperationsEndpoint(t *testing.T) {
 		StackService: lifecycle.NewService(),
 	}).Handler
 
-	createBody := `{"action":"create","stack_id":"dev-stack","environment":"dev","actor":"alice","replicas":2}`
+	createBody := `{"action":"create","stack_id":"dev-stack","environment":"dev","actor":"alice","replicas":2,"tags":{"gocools:stack-id":"dev-stack","gocools:environment":"dev","gocools:owner":"alice"}}`
 	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/operations", bytes.NewBufferString(createBody))
 	createRes := httptest.NewRecorder()
 	handler.ServeHTTP(createRes, createReq)
@@ -121,7 +121,7 @@ func TestStackDestroyProdRequiresManualOverride(t *testing.T) {
 		StackService: lifecycle.NewService(),
 	}).Handler
 
-	createBody := `{"action":"create","stack_id":"prod-stack","environment":"prod","actor":"alice"}`
+	createBody := `{"action":"create","stack_id":"prod-stack","environment":"prod","actor":"alice","tags":{"gocools:stack-id":"prod-stack","gocools:environment":"prod","gocools:owner":"alice"}}`
 	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/stacks/operations", bytes.NewBufferString(createBody))
 	createRes := httptest.NewRecorder()
 	handler.ServeHTTP(createRes, createReq)

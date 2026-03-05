@@ -16,7 +16,7 @@ curl -s localhost:8081/healthz
 curl -s "localhost:8081/api/v1/graph?stack_id=dev-stack&environment=dev"
 curl -s -X POST localhost:8081/api/v1/stacks/operations \
   -H 'content-type: application/json' \
-  -d '{"action":"create","stack_id":"dev-stack","environment":"dev","actor":"alice"}'
+  -d '{"action":"create","stack_id":"dev-stack","environment":"dev","actor":"alice","tags":{"gocools:stack-id":"dev-stack","gocools:environment":"dev","gocools:owner":"alice"}}'
 ```
 
 ## Repository Layout
