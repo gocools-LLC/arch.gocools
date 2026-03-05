@@ -135,3 +135,33 @@ func TestStackDestroyProdRequiresManualOverride(t *testing.T) {
 		t.Fatalf("expected prod destroy rejection status %d, got %d body=%s", http.StatusBadRequest, destroyRes.Code, destroyRes.Body.String())
 	}
 }
+
+func TestDriftEndpoint(t *testing.T) {
+	handler := New(Config{
+		Version: "test-version",
+		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}).Handler
+
+	body := `{
+	  "desired":[{"id":"i-1","type":"aws.ec2.instance","state":"running"}],
+	  "actual":[{"id":"i-1","type":"aws.ec2.instance","state":"stopped"}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/drift", bytes.NewBufferString(body))
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, res.Code, res.Body.String())
+	}
+
+	var payload struct {
+		Changed int `json:"changed"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode drift response: %v", err)
+	}
+	if payload.Changed != 1 {
+		t.Fatalf("expected changed count 1, got %d", payload.Changed)
+	}
+}

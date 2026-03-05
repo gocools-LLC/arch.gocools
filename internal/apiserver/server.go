@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gocools-LLC/arch.gocools/internal/discovery/model"
+	"github.com/gocools-LLC/arch.gocools/internal/drift"
 	"github.com/gocools-LLC/arch.gocools/internal/graph"
 	"github.com/gocools-LLC/arch.gocools/internal/stack/lifecycle"
 )
@@ -69,6 +70,7 @@ func New(cfg Config) *http.Server {
 	mux.HandleFunc("/healthz", statusHandler(version, "ok"))
 	mux.HandleFunc("/readyz", statusHandler(version, "ready"))
 	mux.HandleFunc("/api/v1/graph", graphHandler(graphService))
+	mux.HandleFunc("/api/v1/drift", driftHandler())
 	mux.HandleFunc("/api/v1/stacks/operations", stackOperationHandler(stackService))
 
 	return &http.Server{
@@ -137,6 +139,32 @@ func stackOperationHandler(service StackLifecycleService) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+type driftRequest struct {
+	Desired            []model.Resource `json:"desired"`
+	Actual             []model.Resource `json:"actual"`
+	IgnoredMetadataKey []string         `json:"ignored_metadata_keys,omitempty"`
+}
+
+func driftHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
+			return
+		}
+
+		var request driftRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json payload"})
+			return
+		}
+
+		report := drift.BuildReport(request.Desired, request.Actual, drift.Config{
+			IgnoredMetadataKeys: request.IgnoredMetadataKey,
+		})
+		writeJSON(w, http.StatusOK, report)
 	}
 }
 

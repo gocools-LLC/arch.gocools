@@ -17,6 +17,9 @@ curl -s "localhost:8081/api/v1/graph?stack_id=dev-stack&environment=dev"
 curl -s -X POST localhost:8081/api/v1/stacks/operations \
   -H 'content-type: application/json' \
   -d '{"action":"create","stack_id":"dev-stack","environment":"dev","actor":"alice","tags":{"gocools:stack-id":"dev-stack","gocools:environment":"dev","gocools:owner":"alice"}}'
+curl -s -X POST localhost:8081/api/v1/drift \
+  -H 'content-type: application/json' \
+  -d '{"desired":[{"id":"i-1","type":"aws.ec2.instance","state":"running"}],"actual":[{"id":"i-1","type":"aws.ec2.instance","state":"stopped"}]}'
 ```
 
 ## Repository Layout
@@ -49,6 +52,7 @@ gocools:owner
 - [Terraform State Import](docs/terraform-import.md)
 - [Terraform Export](docs/terraform-export.md)
 - [Stack Lifecycle](docs/stack-lifecycle.md)
+- [Drift Detection](docs/drift-detection.md)
 - [Roadmap](docs/roadmap.md)
 - [RFC-0001](docs/rfc/rfc-0001-platform.md)
 

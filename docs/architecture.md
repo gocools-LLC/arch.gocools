@@ -87,3 +87,17 @@ Arch includes guarded stack operations with audit logging:
 See:
 
 - [stack-lifecycle.md](stack-lifecycle.md)
+
+## Drift Detection
+
+Arch includes a drift detection prototype that reports:
+
+- added resources
+- missing resources
+- changed resources
+
+with severity and field-level change details.
+
+See:
+
+- [drift-detection.md](drift-detection.md)
