@@ -65,3 +65,16 @@ Diff results are deterministic:
 - sorted by `node_id`
 - then by change kind for ties
 
+## Large Snapshot Validation
+
+Stress test:
+
+```bash
+go test ./internal/graph -run TestDiffGraphsLargeSnapshotStress -count=1
+```
+
+Allocation benchmark:
+
+```bash
+go test ./internal/graph -bench BenchmarkDiffGraphsLarge -benchmem -run '^$'
+```

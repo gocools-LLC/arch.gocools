@@ -1,7 +1,6 @@
 package graph
 
 import (
-	"fmt"
 	"sort"
 )
 
@@ -34,61 +33,65 @@ type DiffReport struct {
 }
 
 func DiffGraphs(before Graph, after Graph, query Query) DiffReport {
-	filteredBefore := before.Filter(query)
-	filteredAfter := after.Filter(query)
+	beforeNodes := filteredAndSortedNodes(before.Nodes, query)
+	afterNodes := filteredAndSortedNodes(after.Nodes, query)
 
-	beforeByID := map[string]Node{}
-	afterByID := map[string]Node{}
-	for _, node := range filteredBefore.Nodes {
-		beforeByID[node.ID] = node
-	}
-	for _, node := range filteredAfter.Nodes {
-		afterByID[node.ID] = node
-	}
+	changes := make([]NodeDiff, 0, estimateChangeCapacity(len(beforeNodes), len(afterNodes)))
 
-	changes := make([]NodeDiff, 0)
+	beforeIndex := 0
+	afterIndex := 0
+	for beforeIndex < len(beforeNodes) && afterIndex < len(afterNodes) {
+		previousNode := beforeNodes[beforeIndex]
+		nextNode := afterNodes[afterIndex]
 
-	for id, previousNode := range beforeByID {
-		nextNode, exists := afterByID[id]
-		if !exists {
+		switch {
+		case previousNode.ID == nextNode.ID:
+			fieldChanges := compareNodeFields(previousNode, nextNode)
+			if len(fieldChanges) > 0 {
+				changes = append(changes, NodeDiff{
+					Kind:         DiffKindModified,
+					NodeID:       nextNode.ID,
+					ResourceType: nextNode.Type,
+					Changes:      fieldChanges,
+				})
+			}
+			beforeIndex++
+			afterIndex++
+
+		case previousNode.ID < nextNode.ID:
 			changes = append(changes, NodeDiff{
 				Kind:         DiffKindRemoved,
-				NodeID:       id,
+				NodeID:       previousNode.ID,
 				ResourceType: previousNode.Type,
 			})
-			continue
-		}
+			beforeIndex++
 
-		fieldChanges := compareNodeFields(previousNode, nextNode)
-		if len(fieldChanges) == 0 {
-			continue
+		default:
+			changes = append(changes, NodeDiff{
+				Kind:         DiffKindAdded,
+				NodeID:       nextNode.ID,
+				ResourceType: nextNode.Type,
+			})
+			afterIndex++
 		}
-
-		changes = append(changes, NodeDiff{
-			Kind:         DiffKindModified,
-			NodeID:       id,
-			ResourceType: nextNode.Type,
-			Changes:      fieldChanges,
-		})
 	}
 
-	for id, nextNode := range afterByID {
-		if _, exists := beforeByID[id]; exists {
-			continue
-		}
+	for ; beforeIndex < len(beforeNodes); beforeIndex++ {
+		previousNode := beforeNodes[beforeIndex]
+		changes = append(changes, NodeDiff{
+			Kind:         DiffKindRemoved,
+			NodeID:       previousNode.ID,
+			ResourceType: previousNode.Type,
+		})
+	}
+	for ; afterIndex < len(afterNodes); afterIndex++ {
+		nextNode := afterNodes[afterIndex]
 		changes = append(changes, NodeDiff{
 			Kind:         DiffKindAdded,
-			NodeID:       id,
+			NodeID:       nextNode.ID,
 			ResourceType: nextNode.Type,
 		})
 	}
-
-	sort.Slice(changes, func(i, j int) bool {
-		if changes[i].NodeID == changes[j].NodeID {
-			return changes[i].Kind < changes[j].Kind
-		}
-		return changes[i].NodeID < changes[j].NodeID
-	})
 
 	report := DiffReport{
 		Changes: changes,
@@ -108,7 +111,7 @@ func DiffGraphs(before Graph, after Graph, query Query) DiffReport {
 }
 
 func compareNodeFields(before Node, after Node) []FieldChange {
-	changes := make([]FieldChange, 0)
+	changes := make([]FieldChange, 0, 8)
 
 	if before.Type != after.Type {
 		changes = append(changes, FieldChange{Field: "type", Before: before.Type, After: after.Type})
@@ -140,34 +143,84 @@ func compareNodeFields(before Node, after Node) []FieldChange {
 }
 
 func mapDiff(prefix string, before map[string]string, after map[string]string) []FieldChange {
-	changes := make([]FieldChange, 0)
+	if len(before) == 0 && len(after) == 0 {
+		return nil
+	}
 
-	for key, beforeValue := range before {
-		afterValue, exists := after[key]
-		if !exists {
-			changes = append(changes, FieldChange{
-				Field:  fmt.Sprintf("%s.%s", prefix, key),
-				Before: beforeValue,
-			})
+	keys := make([]string, 0, len(before)+len(after))
+	seen := make(map[string]struct{}, len(before)+len(after))
+	for key := range before {
+		keys = append(keys, key)
+		seen[key] = struct{}{}
+	}
+	for key := range after {
+		if _, exists := seen[key]; exists {
 			continue
 		}
-		if beforeValue != afterValue {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	changes := make([]FieldChange, 0, len(keys))
+	for _, key := range keys {
+		beforeValue, beforeExists := before[key]
+		afterValue, afterExists := after[key]
+
+		field := joinField(prefix, key)
+		switch {
+		case beforeExists && afterExists:
+			if beforeValue == afterValue {
+				continue
+			}
 			changes = append(changes, FieldChange{
-				Field:  fmt.Sprintf("%s.%s", prefix, key),
+				Field:  field,
 				Before: beforeValue,
 				After:  afterValue,
 			})
+		case beforeExists:
+			changes = append(changes, FieldChange{
+				Field:  field,
+				Before: beforeValue,
+			})
+		case afterExists:
+			changes = append(changes, FieldChange{
+				Field: field,
+				After: afterValue,
+			})
 		}
-	}
-	for key, afterValue := range after {
-		if _, exists := before[key]; exists {
-			continue
-		}
-		changes = append(changes, FieldChange{
-			Field: fmt.Sprintf("%s.%s", prefix, key),
-			After: afterValue,
-		})
 	}
 
 	return changes
+}
+
+func filteredAndSortedNodes(nodes []Node, query Query) []Node {
+	filtered := make([]Node, 0, len(nodes))
+	for _, node := range nodes {
+		if !matchesNodeFilter(node, query) {
+			continue
+		}
+		filtered = append(filtered, node)
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].ID < filtered[j].ID
+	})
+	return filtered
+}
+
+func estimateChangeCapacity(beforeCount int, afterCount int) int {
+	if beforeCount == 0 {
+		return afterCount
+	}
+	if afterCount == 0 {
+		return beforeCount
+	}
+	if beforeCount > afterCount {
+		return beforeCount
+	}
+	return afterCount
+}
+
+func joinField(prefix string, key string) string {
+	return prefix + "." + key
 }
