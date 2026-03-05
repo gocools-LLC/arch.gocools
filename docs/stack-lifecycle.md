@@ -15,11 +15,14 @@ Endpoint:
 
 - destroy requires `confirm=true`
 - destroy in `prod` requires `manual_override=true`
+- update/destroy fail fast when `gocools:owner` is missing
 - dry-run mode (`dry_run=true`) returns operation result without mutating stack state
 - create/update enforce required tags:
   - `gocools:stack-id`
   - `gocools:environment`
   - `gocools:owner`
+
+When owner-tag validation fails, API errors include remediation guidance.
 
 ## Audit Logging
 

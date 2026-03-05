@@ -185,3 +185,62 @@ func TestCreateFailsWithoutRequiredTags(t *testing.T) {
 		t.Fatal("expected required tag validation error")
 	}
 }
+
+func TestUpdateFailsWhenOwnerTagMissing(t *testing.T) {
+	service := NewService()
+	service.stacks["dev-stack"] = Stack{
+		ID:          "dev-stack",
+		Environment: "dev",
+		Replicas:    1,
+		Tags: map[string]string{
+			"gocools:stack-id":    "dev-stack",
+			"gocools:environment": "dev",
+		},
+	}
+
+	_, err := service.Apply(Request{
+		Action:      ActionUpdate,
+		StackID:     "dev-stack",
+		Environment: "dev",
+		Actor:       "alice",
+		Metadata: map[string]string{
+			"purpose": "upgrade",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected owner-tag validation error on update")
+	}
+	if !strings.Contains(err.Error(), "gocools:owner") || !strings.Contains(err.Error(), "remediation") {
+		t.Fatalf("expected owner-tag remediation message, got %v", err)
+	}
+}
+
+func TestDestroyFailsWhenOwnerTagMissing(t *testing.T) {
+	service := NewService()
+	service.stacks["dev-stack"] = Stack{
+		ID:          "dev-stack",
+		Environment: "dev",
+		Replicas:    1,
+		Tags: map[string]string{
+			"gocools:stack-id":    "dev-stack",
+			"gocools:environment": "dev",
+		},
+	}
+
+	for _, dryRun := range []bool{false, true} {
+		_, err := service.Apply(Request{
+			Action:      ActionDestroy,
+			StackID:     "dev-stack",
+			Environment: "dev",
+			Actor:       "alice",
+			Confirm:     true,
+			DryRun:      dryRun,
+		})
+		if err == nil {
+			t.Fatalf("expected owner-tag validation error on destroy (dry_run=%v)", dryRun)
+		}
+		if !strings.Contains(err.Error(), "gocools:owner") || !strings.Contains(err.Error(), "remediation") {
+			t.Fatalf("expected owner-tag remediation message on destroy (dry_run=%v), got %v", dryRun, err)
+		}
+	}
+}

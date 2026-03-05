@@ -2,6 +2,8 @@ package lifecycle
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -142,6 +144,9 @@ func (s *Service) Apply(request Request) (Result, error) {
 			}
 			updated.Metadata[key] = value
 		}
+		if err := validateOwnerTag(updated.Tags, request.Action); err != nil {
+			return Result{}, err
+		}
 
 		if err := policytags.Validate(updated.Tags, request.StackID, request.Environment); err != nil {
 			return Result{}, err
@@ -172,6 +177,9 @@ func (s *Service) Apply(request Request) (Result, error) {
 	case ActionDestroy:
 		if !exists {
 			return Result{}, errors.New("stack does not exist")
+		}
+		if err := validateOwnerTag(stack.Tags, request.Action); err != nil {
+			return Result{}, err
 		}
 		if !request.Confirm {
 			return Result{}, errors.New("destroy requires confirm=true")
@@ -249,4 +257,11 @@ func cloneMap(value map[string]string) map[string]string {
 		cloned[key] = item
 	}
 	return cloned
+}
+
+func validateOwnerTag(tags map[string]string, action Action) error {
+	if strings.TrimSpace(tags["gocools:owner"]) == "" {
+		return fmt.Errorf("%s requires tag gocools:owner; remediation: set gocools:owner=<team-or-user>", action)
+	}
+	return nil
 }
