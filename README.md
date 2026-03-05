@@ -14,6 +14,9 @@ Cloud architecture visualizer and control plane for safe stack operations.
 go run ./cmd/arch
 curl -s localhost:8081/healthz
 curl -s "localhost:8081/api/v1/graph?stack_id=dev-stack&environment=dev"
+curl -s -X POST localhost:8081/api/v1/graph/diff \
+  -H 'content-type: application/json' \
+  -d '{"stack_id":"dev-stack","environment":"dev","before":{"schema_version":"arch.gocools/v1alpha1","generated_at":"2026-03-05T00:00:00Z","nodes":[],"edges":[]},"after":{"schema_version":"arch.gocools/v1alpha1","generated_at":"2026-03-05T00:01:00Z","nodes":[],"edges":[]}}'
 curl -s -X POST localhost:8081/api/v1/stacks/operations \
   -H 'content-type: application/json' \
   -d '{"action":"create","stack_id":"dev-stack","environment":"dev","actor":"alice","tags":{"gocools:stack-id":"dev-stack","gocools:environment":"dev","gocools:owner":"alice"}}'
@@ -48,6 +51,7 @@ gocools:owner
 - [Architecture](docs/architecture.md)
 - [Graph Schema](docs/graph-schema.md)
 - [Graph API](docs/api/graph.md)
+- [Graph Diff API](docs/api/graph-diff.md)
 - [AWS Discovery Engine](docs/discovery-engine.md)
 - [Terraform State Import](docs/terraform-import.md)
 - [Terraform Export](docs/terraform-export.md)

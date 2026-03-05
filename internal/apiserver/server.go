@@ -70,6 +70,7 @@ func New(cfg Config) *http.Server {
 	mux.HandleFunc("/healthz", statusHandler(version, "ok"))
 	mux.HandleFunc("/readyz", statusHandler(version, "ready"))
 	mux.HandleFunc("/api/v1/graph", graphHandler(graphService))
+	mux.HandleFunc("/api/v1/graph/diff", graphDiffHandler())
 	mux.HandleFunc("/api/v1/drift", driftHandler())
 	mux.HandleFunc("/api/v1/stacks/operations", stackOperationHandler(stackService))
 
@@ -148,6 +149,13 @@ type driftRequest struct {
 	IgnoredMetadataKey []string         `json:"ignored_metadata_keys,omitempty"`
 }
 
+type graphDiffRequest struct {
+	Before      graph.Graph `json:"before"`
+	After       graph.Graph `json:"after"`
+	StackID     string      `json:"stack_id,omitempty"`
+	Environment string      `json:"environment,omitempty"`
+}
+
 func driftHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -164,6 +172,28 @@ func driftHandler() http.HandlerFunc {
 		report := drift.BuildReport(request.Desired, request.Actual, drift.Config{
 			IgnoredMetadataKeys: request.IgnoredMetadataKey,
 		})
+		writeJSON(w, http.StatusOK, report)
+	}
+}
+
+func graphDiffHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
+			return
+		}
+
+		var request graphDiffRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json payload"})
+			return
+		}
+
+		report := graph.DiffGraphs(request.Before, request.After, graph.Query{
+			StackID:     request.StackID,
+			Environment: request.Environment,
+		})
+
 		writeJSON(w, http.StatusOK, report)
 	}
 }

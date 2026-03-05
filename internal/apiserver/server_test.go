@@ -165,3 +165,57 @@ func TestDriftEndpoint(t *testing.T) {
 		t.Fatalf("expected changed count 1, got %d", payload.Changed)
 	}
 }
+
+func TestGraphDiffEndpointSupportsStackFilter(t *testing.T) {
+	handler := New(Config{
+		Version: "test-version",
+		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}).Handler
+
+	body := `{
+	  "stack_id": "dev-stack",
+	  "environment": "dev",
+	  "before": {
+	    "schema_version": "arch.gocools/v1alpha1",
+	    "generated_at": "2026-03-05T00:00:00Z",
+	    "nodes": [
+	      {"id":"dev-node","type":"aws.ec2.instance","state":"running","tags":{"gocools:stack-id":"dev-stack","gocools:environment":"dev"}},
+	      {"id":"prod-node","type":"aws.ec2.instance","state":"running","tags":{"gocools:stack-id":"prod-stack","gocools:environment":"prod"}}
+	    ],
+	    "edges": []
+	  },
+	  "after": {
+	    "schema_version": "arch.gocools/v1alpha1",
+	    "generated_at": "2026-03-05T00:01:00Z",
+	    "nodes": [
+	      {"id":"dev-node","type":"aws.ec2.instance","state":"stopped","tags":{"gocools:stack-id":"dev-stack","gocools:environment":"dev"}},
+	      {"id":"prod-node","type":"aws.ec2.instance","state":"running","tags":{"gocools:stack-id":"prod-stack","gocools:environment":"prod"}}
+	    ],
+	    "edges": []
+	  }
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/graph/diff", bytes.NewBufferString(body))
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusOK, res.Code, res.Body.String())
+	}
+
+	var payload struct {
+		Modified int `json:"modified"`
+		Changes  []struct {
+			NodeID string `json:"node_id"`
+		} `json:"changes"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode graph diff response: %v", err)
+	}
+	if payload.Modified != 1 || len(payload.Changes) != 1 {
+		t.Fatalf("expected one filtered diff change, got %+v", payload)
+	}
+	if payload.Changes[0].NodeID != "dev-node" {
+		t.Fatalf("expected dev-node change, got %+v", payload.Changes[0])
+	}
+}

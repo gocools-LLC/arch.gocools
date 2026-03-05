@@ -58,6 +58,7 @@ See:
 
 - [graph-schema.md](graph-schema.md)
 - [api/graph.md](api/graph.md)
+- [api/graph-diff.md](api/graph-diff.md)
 
 ## Terraform Import
 
