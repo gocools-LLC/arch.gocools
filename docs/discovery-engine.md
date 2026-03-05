@@ -26,6 +26,17 @@ All discoveries are normalized to:
 ## Operational Behavior
 
 - paginated AWS APIs are traversed until completion
-- throttling errors are retried with exponential backoff
+- throttling errors are retried with adaptive jittered exponential backoff
 - service-specific mappers produce stable, provider-normalized resources
+- pagination loops are bounded by a deterministic max-page limit per operation
 
+## Discovery Metrics
+
+`Discoverer.Metrics()` exposes:
+
+- `throttled_responses`
+- `retry_attempts`
+- `retry_exhausted`
+- `pages_fetched`
+- `max_page_depth`
+- `pagination_limit_errors`
