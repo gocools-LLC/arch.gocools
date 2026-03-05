@@ -66,3 +66,11 @@ Arch includes a Terraform state importer that converts Terraform state resources
 See:
 
 - [terraform-import.md](terraform-import.md)
+
+## Terraform Export
+
+Arch includes graph-to-Terraform export that emits deterministic configuration and reports unsupported resources.
+
+See:
+
+- [terraform-export.md](terraform-export.md)
