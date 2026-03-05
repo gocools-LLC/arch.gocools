@@ -38,6 +38,7 @@ gocools:owner
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [AWS Discovery Engine](docs/discovery-engine.md)
 - [Roadmap](docs/roadmap.md)
 - [RFC-0001](docs/rfc/rfc-0001-platform.md)
 

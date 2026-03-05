@@ -18,7 +18,10 @@ This repository focuses on **Arch** and integrates with the other layers through
 
 ## Core Capabilities
 
-- AWS infrastructure discovery\n- interactive architecture graph\n- Terraform import/export workflow\n- stack lifecycle management with policy enforcement
+- AWS infrastructure discovery
+- interactive architecture graph
+- Terraform import/export workflow
+- stack lifecycle management with policy enforcement
 
 ## Guardrails
 
@@ -31,3 +34,14 @@ gocools:owner
 ```
 
 Destructive actions require stack validation and environment-aware protections.
+
+## Discovery Engine
+
+Arch includes a normalized AWS discovery engine in `internal/discovery/aws` for:
+
+- EC2 instances
+- ECS services
+- ELBv2 load balancers
+- RDS DB instances
+
+The engine returns stable resource identifiers and supports paginated API traversal with throttling retries.
