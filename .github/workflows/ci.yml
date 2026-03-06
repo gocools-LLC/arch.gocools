@@ -22,3 +22,6 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+      - name: API Smoke
+        run: make smoke-local

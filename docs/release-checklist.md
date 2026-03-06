@@ -13,13 +13,9 @@ Target release: `v0.1.0`
 ## Pre-Release Validation
 
 - [ ] `go test ./...`
+- [ ] `make smoke-local`
 - [ ] `go build ./...`
 - [ ] `terraform validate` check covered by exporter tests
-- [ ] smoke test `/healthz`
-- [ ] smoke test `/api/v1/graph`
-- [ ] smoke test `/api/v1/graph/diff`
-- [ ] smoke test `/api/v1/stacks/operations`
-- [ ] smoke test `/api/v1/drift`
 
 ## Smoke Test Matrix
 
@@ -60,4 +56,3 @@ Target release: `v0.1.0`
 - [ ] publish release notes
 - [ ] verify downloaded artifacts
 - [ ] open patch milestone for follow-up fixes
-

@@ -23,6 +23,7 @@ curl -s -X POST localhost:8081/api/v1/stacks/operations \
 curl -s -X POST localhost:8081/api/v1/drift \
   -H 'content-type: application/json' \
   -d '{"desired":[{"id":"i-1","type":"aws.ec2.instance","state":"running"}],"actual":[{"id":"i-1","type":"aws.ec2.instance","state":"stopped"}]}'
+make smoke-local
 ```
 
 ## Repository Layout

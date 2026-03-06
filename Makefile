@@ -1,12 +1,15 @@
 BINARY := arch
 
-.PHONY: build test run fmt lint
+.PHONY: build test smoke-local run fmt lint
 
 build:
 	go build ./...
 
 test:
 	go test ./...
+
+smoke-local:
+	./scripts/smoke-local.sh
 
 run:
 	go run ./cmd/$(BINARY)
