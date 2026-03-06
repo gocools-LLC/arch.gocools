@@ -1,6 +1,16 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type PointerEvent,
+  type WheelEvent
+} from "react";
 
 type EditorMode = "select" | "connect" | "pan";
+type OperationAction = "create" | "update" | "scale" | "destroy";
 
 type ResourceTemplate = {
   id: string;
@@ -29,22 +39,94 @@ type EditorEdge = {
   type: string;
 };
 
-type GraphResponse = {
+type GraphNodePayload = {
+  id: string;
+  type: string;
+  provider?: string;
+  region?: string;
+  name?: string;
+  state?: string;
+  arn?: string;
+  tags?: Record<string, string>;
+  metadata?: Record<string, string>;
+};
+
+type GraphEdgePayload = {
+  from: string;
+  to: string;
+  type: string;
+  metadata?: Record<string, string>;
+};
+
+type GraphSnapshot = {
   schema_version: string;
   generated_at: string;
-  nodes: Array<{
+  nodes: GraphNodePayload[];
+  edges: GraphEdgePayload[];
+};
+
+type DiffFieldChange = {
+  field: string;
+  before?: string;
+  after?: string;
+};
+
+type GraphDiffChange = {
+  kind: "added" | "removed" | "modified";
+  node_id: string;
+  resource_type: string;
+  changes?: DiffFieldChange[];
+};
+
+type GraphDiffReport = {
+  added: number;
+  removed: number;
+  modified: number;
+  changes: GraphDiffChange[];
+};
+
+type StackOperationRequest = {
+  action: OperationAction;
+  stack_id: string;
+  environment: string;
+  actor: string;
+  replicas?: number;
+  tags?: Record<string, string>;
+  metadata?: Record<string, string>;
+  confirm?: boolean;
+  dry_run?: boolean;
+  manual_override?: boolean;
+};
+
+type StackOperationResponse = {
+  executed: boolean;
+  dry_run: boolean;
+  message: string;
+  stack?: {
     id: string;
-    type: string;
-    name?: string;
-    region?: string;
-    state?: string;
+    environment: string;
+    replicas: number;
     tags?: Record<string, string>;
-  }>;
-  edges: Array<{
-    from: string;
-    to: string;
-    type: string;
-  }>;
+    metadata?: Record<string, string>;
+  };
+  audit: {
+    timestamp: string;
+    actor: string;
+    stack_id: string;
+    environment: string;
+    action: OperationAction;
+    dry_run: boolean;
+    result: string;
+  };
+};
+
+type ErrorPayload = {
+  error?: string;
+};
+
+type GuardrailState = {
+  blocking: string[];
+  warnings: string[];
 };
 
 const STORAGE_KEY = "arch.frontend.canvas.v1";
@@ -52,6 +134,7 @@ const CANVAS_WIDTH = 4200;
 const CANVAS_HEIGHT = 2600;
 const NODE_WIDTH = 190;
 const NODE_HEIGHT = 88;
+const REQUIRED_TAG_KEYS = ["gocools:stack-id", "gocools:environment", "gocools:owner"] as const;
 
 const RESOURCE_LIBRARY: ResourceTemplate[] = [
   { id: "ec2", type: "aws.ec2.instance", title: "EC2 Instance", color: "#f97316" },
@@ -85,12 +168,31 @@ function sanitizeNodePosition(x: number, y: number): { x: number; y: number } {
   };
 }
 
+function normalizeRequiredTags(tags: Record<string, string> | undefined): Record<string, string> {
+  const next = {
+    ...(tags || {})
+  };
+
+  for (const key of REQUIRED_TAG_KEYS) {
+    if (!(key in next)) {
+      next[key] = "";
+    }
+  }
+
+  return next;
+}
+
 function typeColor(type: string): string {
-  const hit = RESOURCE_LIBRARY.find((entry) => type.includes(entry.type.split(".")[1]));
+  const hit = RESOURCE_LIBRARY.find((entry) => type === entry.type || type.startsWith(`${entry.type}.`));
   return hit?.color ?? "#0f766e";
 }
 
-function createNode(template: ResourceTemplate, x: number, y: number): EditorNode {
+function createNode(
+  template: ResourceTemplate,
+  x: number,
+  y: number,
+  defaults: { stackId: string; environment: string; owner: string }
+): EditorNode {
   const pos = sanitizeNodePosition(x, y);
   return {
     id: uid("node"),
@@ -102,15 +204,15 @@ function createNode(template: ResourceTemplate, x: number, y: number): EditorNod
     height: NODE_HEIGHT,
     region: "us-east-1",
     state: "active",
-    tags: {
-      "gocools:stack-id": "dev-stack",
-      "gocools:environment": "dev",
-      "gocools:owner": "platform-team"
-    }
+    tags: normalizeRequiredTags({
+      "gocools:stack-id": defaults.stackId,
+      "gocools:environment": defaults.environment,
+      "gocools:owner": defaults.owner
+    })
   };
 }
 
-function mapGraphToCanvas(payload: GraphResponse): { nodes: EditorNode[]; edges: EditorEdge[] } {
+function mapGraphToCanvas(payload: GraphSnapshot): { nodes: EditorNode[]; edges: EditorEdge[] } {
   const columns = 4;
   const nodes = payload.nodes.map((node, index) => {
     const col = index % columns;
@@ -125,11 +227,7 @@ function mapGraphToCanvas(payload: GraphResponse): { nodes: EditorNode[]; edges:
       height: NODE_HEIGHT,
       region: node.region || "us-east-1",
       state: node.state || "active",
-      tags: {
-        "gocools:stack-id": node.tags?.["gocools:stack-id"] || "",
-        "gocools:environment": node.tags?.["gocools:environment"] || "",
-        "gocools:owner": node.tags?.["gocools:owner"] || ""
-      }
+      tags: normalizeRequiredTags(node.tags)
     } satisfies EditorNode;
   });
 
@@ -146,6 +244,93 @@ function mapGraphToCanvas(payload: GraphResponse): { nodes: EditorNode[]; edges:
   return { nodes, edges };
 }
 
+function canvasToGraph(nodes: EditorNode[], edges: EditorEdge[]): GraphSnapshot {
+  const graphNodes: GraphNodePayload[] = nodes.map((node) => ({
+    id: node.id,
+    type: node.type,
+    provider: node.type.split(".")[0] || "aws",
+    region: node.region,
+    name: node.title,
+    state: node.state,
+    tags: normalizeRequiredTags(node.tags),
+    metadata: {
+      source: "arch.frontend",
+      canvas_x: String(Math.round(node.x)),
+      canvas_y: String(Math.round(node.y))
+    }
+  }));
+
+  const graphEdges: GraphEdgePayload[] = edges.map((edge) => ({
+    from: edge.from,
+    to: edge.to,
+    type: edge.type,
+    metadata: {
+      source: "arch.frontend"
+    }
+  }));
+
+  return {
+    schema_version: "arch.gocools/v1alpha1",
+    generated_at: new Date().toISOString(),
+    nodes: graphNodes,
+    edges: graphEdges
+  };
+}
+
+function buildNodeTagGuardrails(nodes: EditorNode[], stackID: string, environment: string): GuardrailState {
+  const blocking: string[] = [];
+  const warnings: string[] = [];
+
+  for (const node of nodes) {
+    const missing = REQUIRED_TAG_KEYS.filter((key) => !node.tags[key] || node.tags[key].trim() === "");
+    if (missing.length > 0) {
+      blocking.push(`Node ${node.title} missing tags: ${missing.join(", ")}.`);
+      continue;
+    }
+
+    if (stackID !== "" && node.tags["gocools:stack-id"] !== stackID) {
+      warnings.push(
+        `Node ${node.title} stack tag (${node.tags["gocools:stack-id"]}) differs from filter (${stackID}).`
+      );
+    }
+
+    if (environment !== "" && node.tags["gocools:environment"] !== environment) {
+      warnings.push(
+        `Node ${node.title} environment tag (${node.tags["gocools:environment"]}) differs from filter (${environment}).`
+      );
+    }
+  }
+
+  return { blocking, warnings };
+}
+
+function parsePositiveInt(value: string): number | null {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function summarizeDiff(change: GraphDiffChange): string {
+  if (!change.changes || change.changes.length === 0) {
+    return "No field-level changes.";
+  }
+
+  return change.changes
+    .slice(0, 2)
+    .map((fieldChange) => {
+      if (fieldChange.before !== undefined && fieldChange.after !== undefined) {
+        return `${fieldChange.field}: ${fieldChange.before} -> ${fieldChange.after}`;
+      }
+      if (fieldChange.before !== undefined) {
+        return `${fieldChange.field}: removed ${fieldChange.before}`;
+      }
+      return `${fieldChange.field}: added ${fieldChange.after || ""}`;
+    })
+    .join("; ");
+}
+
 function loadSaved(): { nodes: EditorNode[]; edges: EditorEdge[] } {
   if (typeof window === "undefined") {
     return { nodes: [], edges: [] };
@@ -159,12 +344,32 @@ function loadSaved(): { nodes: EditorNode[]; edges: EditorEdge[] } {
   try {
     const parsed = JSON.parse(raw) as { nodes?: EditorNode[]; edges?: EditorEdge[] };
     return {
-      nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
+      nodes: Array.isArray(parsed.nodes)
+        ? parsed.nodes.map((node) => ({
+            ...node,
+            width: node.width || NODE_WIDTH,
+            height: node.height || NODE_HEIGHT,
+            tags: normalizeRequiredTags(node.tags)
+          }))
+        : [],
       edges: Array.isArray(parsed.edges) ? parsed.edges : []
     };
   } catch {
     return { nodes: [], edges: [] };
   }
+}
+
+async function parseApiError(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as ErrorPayload;
+    if (typeof payload.error === "string" && payload.error.trim() !== "") {
+      return payload.error;
+    }
+  } catch {
+    // Fall through to default error.
+  }
+
+  return `request failed with status ${response.status}`;
 }
 
 type DragState = {
@@ -182,6 +387,7 @@ type PanState = {
 
 export default function App() {
   const loaded = useMemo(() => loadSaved(), []);
+
   const [nodes, setNodes] = useState<EditorNode[]>(loaded.nodes);
   const [edges, setEdges] = useState<EditorEdge[]>(loaded.edges);
   const [mode, setMode] = useState<EditorMode>("select");
@@ -189,9 +395,23 @@ export default function App() {
   const [connectFromId, setConnectFromId] = useState<string | null>(null);
   const [zoom, setZoom] = useState<number>(0.95);
   const [pan, setPan] = useState({ x: 120, y: 80 });
+
   const [stackFilter, setStackFilter] = useState("dev-stack");
   const [environmentFilter, setEnvironmentFilter] = useState("dev");
+  const [actor, setActor] = useState("platform-team");
+  const [operationOwner, setOperationOwner] = useState("platform-team");
+  const [operationAction, setOperationAction] = useState<OperationAction>("create");
+  const [replicas, setReplicas] = useState("2");
+  const [dryRun, setDryRun] = useState(true);
+  const [confirmDestroy, setConfirmDestroy] = useState(false);
+  const [manualOverride, setManualOverride] = useState(false);
+
   const [status, setStatus] = useState("Canvas ready.");
+  const [liveGraphSnapshot, setLiveGraphSnapshot] = useState<GraphSnapshot | null>(null);
+  const [diffReport, setDiffReport] = useState<GraphDiffReport | null>(null);
+  const [lastOperation, setLastOperation] = useState<StackOperationResponse | null>(null);
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -202,6 +422,74 @@ export default function App() {
     () => nodes.find((node) => node.id === selectedNodeId) || null,
     [nodes, selectedNodeId]
   );
+
+  const trimmedStack = stackFilter.trim();
+  const trimmedEnvironment = environmentFilter.trim();
+  const trimmedActor = actor.trim();
+  const trimmedOwner = operationOwner.trim();
+
+  const nodeTagGuardrails = useMemo(
+    () => buildNodeTagGuardrails(nodes, trimmedStack, trimmedEnvironment),
+    [nodes, trimmedStack, trimmedEnvironment]
+  );
+
+  const operationGuardrails = useMemo<GuardrailState>(() => {
+    const blocking: string[] = [];
+    const warnings = [...nodeTagGuardrails.warnings];
+
+    if (trimmedStack === "") {
+      blocking.push("Stack ID is required.");
+    }
+    if (trimmedEnvironment === "") {
+      blocking.push("Environment is required.");
+    }
+    if (trimmedActor === "") {
+      blocking.push("Actor is required.");
+    }
+
+    if (operationAction === "create" || operationAction === "update") {
+      if (trimmedOwner === "") {
+        blocking.push("Owner tag is required for create/update operations.");
+      }
+      blocking.push(...nodeTagGuardrails.blocking);
+    }
+
+    if (operationAction === "create" || operationAction === "scale") {
+      if (parsePositiveInt(replicas) === null) {
+        blocking.push("Replicas must be a positive integer for create/scale.");
+      }
+    }
+
+    if (operationAction === "destroy") {
+      if (!confirmDestroy) {
+        blocking.push("Destroy requires confirm=true.");
+      }
+      if (trimmedEnvironment === "prod" && !manualOverride) {
+        blocking.push("Destroy in prod requires manual_override=true.");
+      }
+    }
+
+    if ((operationAction === "create" || operationAction === "update") && nodes.length === 0) {
+      warnings.push("Canvas has no nodes; operation will only affect stack metadata.");
+    }
+
+    return {
+      blocking,
+      warnings
+    };
+  }, [
+    confirmDestroy,
+    manualOverride,
+    nodeTagGuardrails.blocking,
+    nodeTagGuardrails.warnings,
+    nodes.length,
+    operationAction,
+    replicas,
+    trimmedActor,
+    trimmedEnvironment,
+    trimmedOwner,
+    trimmedStack
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -238,16 +526,23 @@ export default function App() {
 
   function addPaletteNode(template: ResourceTemplate): void {
     const point = worldPoint(window.innerWidth / 2, window.innerHeight / 2);
-    setNodes((current) => [...current, createNode(template, point.x - NODE_WIDTH / 2, point.y - NODE_HEIGHT / 2)]);
+    setNodes((current) => [
+      ...current,
+      createNode(template, point.x - NODE_WIDTH / 2, point.y - NODE_HEIGHT / 2, {
+        stackId: trimmedStack || "dev-stack",
+        environment: trimmedEnvironment || "dev",
+        owner: trimmedOwner || "platform-team"
+      })
+    ]);
     setStatus(`Added ${template.title}.`);
   }
 
-  function onPaletteDragStart(event: React.DragEvent<HTMLButtonElement>, template: ResourceTemplate): void {
+  function onPaletteDragStart(event: DragEvent<HTMLButtonElement>, template: ResourceTemplate): void {
     event.dataTransfer.setData("application/x-arch-template", template.id);
     event.dataTransfer.effectAllowed = "copy";
   }
 
-  function onCanvasDrop(event: React.DragEvent<HTMLDivElement>): void {
+  function onCanvasDrop(event: DragEvent<HTMLDivElement>): void {
     event.preventDefault();
     const templateId = event.dataTransfer.getData("application/x-arch-template");
     const template = RESOURCE_LIBRARY.find((entry) => entry.id === templateId);
@@ -256,7 +551,14 @@ export default function App() {
     }
 
     const point = worldPoint(event.clientX, event.clientY);
-    setNodes((current) => [...current, createNode(template, point.x - NODE_WIDTH / 2, point.y - NODE_HEIGHT / 2)]);
+    setNodes((current) => [
+      ...current,
+      createNode(template, point.x - NODE_WIDTH / 2, point.y - NODE_HEIGHT / 2, {
+        stackId: trimmedStack || "dev-stack",
+        environment: trimmedEnvironment || "dev",
+        owner: trimmedOwner || "platform-team"
+      })
+    ]);
     setStatus(`Dropped ${template.title} on canvas.`);
   }
 
@@ -356,7 +658,7 @@ export default function App() {
     };
   }
 
-  function onCanvasWheel(event: React.WheelEvent<HTMLDivElement>): void {
+  function onCanvasWheel(event: WheelEvent<HTMLDivElement>): void {
     if (!event.ctrlKey && !event.metaKey) {
       return;
     }
@@ -400,35 +702,202 @@ export default function App() {
     setEdges([]);
     setSelectedNodeId(null);
     setConnectFromId(null);
+    setDiffReport(null);
     setStatus("Canvas reset.");
+  }
+
+  async function fetchLiveGraphSnapshot(): Promise<GraphSnapshot> {
+    const query = new URLSearchParams();
+    if (trimmedStack !== "") {
+      query.set("stack_id", trimmedStack);
+    }
+    if (trimmedEnvironment !== "") {
+      query.set("environment", trimmedEnvironment);
+    }
+
+    const response = await fetch(`/api/v1/graph?${query.toString()}`);
+    if (!response.ok) {
+      throw new Error(await parseApiError(response));
+    }
+
+    const payload = (await response.json()) as GraphSnapshot;
+    return {
+      schema_version: payload.schema_version || "arch.gocools/v1alpha1",
+      generated_at: payload.generated_at || new Date().toISOString(),
+      nodes: Array.isArray(payload.nodes) ? payload.nodes : [],
+      edges: Array.isArray(payload.edges) ? payload.edges : []
+    };
   }
 
   async function loadLiveGraph(): Promise<void> {
     try {
-      const query = new URLSearchParams();
-      if (stackFilter.trim() !== "") {
-        query.set("stack_id", stackFilter.trim());
-      }
-      if (environmentFilter.trim() !== "") {
-        query.set("environment", environmentFilter.trim());
-      }
-
-      const response = await fetch(`/api/v1/graph?${query.toString()}`);
-      if (!response.ok) {
-        throw new Error(`graph load failed with status ${response.status}`);
-      }
-
-      const payload = (await response.json()) as GraphResponse;
+      const payload = await fetchLiveGraphSnapshot();
       const mapped = mapGraphToCanvas(payload);
       setNodes(mapped.nodes);
       setEdges(mapped.edges);
+      setLiveGraphSnapshot(payload);
       setSelectedNodeId(null);
       setConnectFromId(null);
+      setDiffReport(null);
       setStatus(`Loaded ${mapped.nodes.length} nodes from Arch API.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setStatus(`Failed to load graph: ${message}`);
     }
+  }
+
+  async function generatePlan(): Promise<void> {
+    if (nodeTagGuardrails.blocking.length > 0) {
+      setStatus(`Plan blocked: ${nodeTagGuardrails.blocking[0]}`);
+      return;
+    }
+
+    setIsPlanning(true);
+    try {
+      const before = liveGraphSnapshot || (await fetchLiveGraphSnapshot());
+      const after = canvasToGraph(nodes, edges);
+      const requestBody: {
+        before: GraphSnapshot;
+        after: GraphSnapshot;
+        stack_id?: string;
+        environment?: string;
+      } = {
+        before,
+        after
+      };
+
+      if (trimmedStack !== "") {
+        requestBody.stack_id = trimmedStack;
+      }
+      if (trimmedEnvironment !== "") {
+        requestBody.environment = trimmedEnvironment;
+      }
+
+      const response = await fetch("/api/v1/graph/diff", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response));
+      }
+
+      const report = (await response.json()) as GraphDiffReport;
+      setLiveGraphSnapshot(before);
+      setDiffReport(report);
+      setStatus(`Plan ready: +${report.added} / ~${report.modified} / -${report.removed}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(`Plan failed: ${message}`);
+    } finally {
+      setIsPlanning(false);
+    }
+  }
+
+  function buildOperationRequest(): StackOperationRequest | null {
+    const request: StackOperationRequest = {
+      action: operationAction,
+      stack_id: trimmedStack,
+      environment: trimmedEnvironment,
+      actor: trimmedActor,
+      dry_run: dryRun
+    };
+
+    if (operationAction === "create" || operationAction === "scale") {
+      const replicaCount = parsePositiveInt(replicas);
+      if (replicaCount === null) {
+        return null;
+      }
+      request.replicas = replicaCount;
+    }
+
+    if (operationAction === "create" || operationAction === "update") {
+      request.tags = {
+        "gocools:stack-id": trimmedStack,
+        "gocools:environment": trimmedEnvironment,
+        "gocools:owner": trimmedOwner
+      };
+      request.metadata = {
+        source: "arch.frontend",
+        node_count: String(nodes.length),
+        edge_count: String(edges.length)
+      };
+    }
+
+    if (operationAction === "destroy") {
+      request.confirm = confirmDestroy;
+      request.manual_override = manualOverride;
+    }
+
+    return request;
+  }
+
+  async function applyOperation(): Promise<void> {
+    if (operationGuardrails.blocking.length > 0) {
+      setStatus(`Operation blocked: ${operationGuardrails.blocking[0]}`);
+      return;
+    }
+
+    const request = buildOperationRequest();
+    if (!request) {
+      setStatus("Operation blocked: invalid replicas value.");
+      return;
+    }
+
+    setIsApplying(true);
+    try {
+      const response = await fetch("/api/v1/stacks/operations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(request)
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response));
+      }
+
+      const result = (await response.json()) as StackOperationResponse;
+      setLastOperation(result);
+
+      if (result.executed && !result.dry_run) {
+        setLiveGraphSnapshot(canvasToGraph(nodes, edges));
+        setDiffReport(null);
+      }
+
+      setStatus(
+        `Operation ${request.action} ${result.executed ? "executed" : "validated"}: ${result.message}. Audit=${result.audit.result}.`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(`Operation failed: ${message}`);
+    } finally {
+      setIsApplying(false);
+    }
+  }
+
+  function stampRequiredTagsOnAllNodes(): void {
+    if (nodes.length === 0) {
+      setStatus("No nodes to tag.");
+      return;
+    }
+
+    setNodes((current) =>
+      current.map((node) => ({
+        ...node,
+        tags: {
+          ...node.tags,
+          "gocools:stack-id": trimmedStack,
+          "gocools:environment": trimmedEnvironment,
+          "gocools:owner": trimmedOwner
+        }
+      }))
+    );
+    setStatus(`Stamped required tags on ${nodes.length} nodes.`);
   }
 
   function exportJson(): void {
@@ -454,7 +923,7 @@ export default function App() {
     fileInputRef.current?.click();
   }
 
-  function onImportFile(event: React.ChangeEvent<HTMLInputElement>): void {
+  function onImportFile(event: ChangeEvent<HTMLInputElement>): void {
     const file = event.target.files?.[0];
     if (!file) {
       return;
@@ -468,10 +937,18 @@ export default function App() {
           throw new Error("invalid diagram payload");
         }
 
-        setNodes(parsed.nodes);
+        const importedNodes = parsed.nodes.map((node) => ({
+          ...node,
+          width: node.width || NODE_WIDTH,
+          height: node.height || NODE_HEIGHT,
+          tags: normalizeRequiredTags(node.tags)
+        }));
+
+        setNodes(importedNodes);
         setEdges(parsed.edges);
         setSelectedNodeId(null);
         setConnectFromId(null);
+        setDiffReport(null);
         setStatus(`Imported ${parsed.nodes.length} nodes.`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -505,7 +982,7 @@ export default function App() {
       <header className="topbar">
         <div>
           <h1>Arch Canvas</h1>
-          <p>AWS architecture editor for Arch.gocools</p>
+          <p>AWS architecture editor and control plane for Arch.gocools</p>
         </div>
         <div className="topbar-actions">
           <button onClick={() => setZoom((current) => clamp(current - 0.1, 0.35, 2.4))}>-</button>
@@ -563,6 +1040,98 @@ export default function App() {
             Environment
             <input value={environmentFilter} onChange={(event) => setEnvironmentFilter(event.target.value)} />
           </label>
+
+          <h3>Control Plane</h3>
+          <label>
+            Actor
+            <input value={actor} onChange={(event) => setActor(event.target.value)} />
+          </label>
+          <label>
+            Owner Tag
+            <input value={operationOwner} onChange={(event) => setOperationOwner(event.target.value)} />
+          </label>
+          <label>
+            Action
+            <select
+              value={operationAction}
+              onChange={(event) => setOperationAction(event.target.value as OperationAction)}
+            >
+              <option value="create">create</option>
+              <option value="update">update</option>
+              <option value="scale">scale</option>
+              <option value="destroy">destroy</option>
+            </select>
+          </label>
+          {(operationAction === "create" || operationAction === "scale") && (
+            <label>
+              Replicas
+              <input value={replicas} onChange={(event) => setReplicas(event.target.value)} inputMode="numeric" />
+            </label>
+          )}
+          <label className="checkline">
+            <input type="checkbox" checked={dryRun} onChange={(event) => setDryRun(event.target.checked)} />
+            Dry Run
+          </label>
+          {operationAction === "destroy" && (
+            <>
+              <label className="checkline">
+                <input
+                  type="checkbox"
+                  checked={confirmDestroy}
+                  onChange={(event) => setConfirmDestroy(event.target.checked)}
+                />
+                Confirm Destroy
+              </label>
+              <label className="checkline">
+                <input
+                  type="checkbox"
+                  checked={manualOverride}
+                  onChange={(event) => setManualOverride(event.target.checked)}
+                />
+                Manual Override (prod)
+              </label>
+            </>
+          )}
+
+          <div className="action-grid">
+            <button className="solid" disabled={isPlanning} onClick={generatePlan}>
+              {isPlanning ? "Planning..." : "Generate Plan"}
+            </button>
+            <button
+              className={operationAction === "destroy" ? "warn" : "solid"}
+              disabled={isApplying}
+              onClick={applyOperation}
+            >
+              {isApplying ? "Applying..." : "Apply Operation"}
+            </button>
+          </div>
+          <button className="soft" onClick={stampRequiredTagsOnAllNodes}>
+            Stamp Required Tags
+          </button>
+
+          <h3>Guardrails</h3>
+          {operationGuardrails.blocking.length === 0 ? (
+            <p className="guard-ok">No blocking guardrails.</p>
+          ) : (
+            <div className="guard-error">
+              {operationGuardrails.blocking.slice(0, 5).map((item) => (
+                <p key={item}>{item}</p>
+              ))}
+              {operationGuardrails.blocking.length > 5 ? (
+                <p>+ {operationGuardrails.blocking.length - 5} more blockers.</p>
+              ) : null}
+            </div>
+          )}
+          {operationGuardrails.warnings.length > 0 ? (
+            <div className="guard-warn">
+              {operationGuardrails.warnings.slice(0, 5).map((item) => (
+                <p key={item}>{item}</p>
+              ))}
+              {operationGuardrails.warnings.length > 5 ? (
+                <p>+ {operationGuardrails.warnings.length - 5} more warnings.</p>
+              ) : null}
+            </div>
+          ) : null}
         </aside>
 
         <section className="canvas-column">
@@ -653,10 +1222,7 @@ export default function App() {
               </label>
               <label>
                 Type
-                <input
-                  value={selectedNode.type}
-                  onChange={(event) => updateSelectedNode({ type: event.target.value })}
-                />
+                <input value={selectedNode.type} onChange={(event) => updateSelectedNode({ type: event.target.value })} />
               </label>
               <label>
                 Region
@@ -667,10 +1233,7 @@ export default function App() {
               </label>
               <label>
                 State
-                <input
-                  value={selectedNode.state}
-                  onChange={(event) => updateSelectedNode({ state: event.target.value })}
-                />
+                <input value={selectedNode.state} onChange={(event) => updateSelectedNode({ state: event.target.value })} />
               </label>
               <label>
                 Stack Tag
@@ -725,8 +1288,51 @@ export default function App() {
             <p>Nodes: {nodes.length}</p>
             <p>Edges: {edges.length}</p>
             <p>Mode: {mode}</p>
+            <p>Baseline: {liveGraphSnapshot ? "loaded" : "not loaded"}</p>
             {connectFromId ? <p>Connecting from: {connectFromId}</p> : null}
           </div>
+
+          <div className="meta-block">
+            <h3>Plan Preview</h3>
+            {!diffReport ? (
+              <p>No plan generated yet.</p>
+            ) : (
+              <>
+                <p>
+                  Added: {diffReport.added} | Modified: {diffReport.modified} | Removed: {diffReport.removed}
+                </p>
+                <div className="diff-list">
+                  {diffReport.changes.slice(0, 8).map((change) => (
+                    <div className="diff-item" key={`${change.kind}-${change.node_id}`}>
+                      <span className={`diff-kind ${change.kind}`}>{change.kind}</span>
+                      <strong>{change.node_id}</strong>
+                      <small>{change.resource_type}</small>
+                      <p>{summarizeDiff(change)}</p>
+                    </div>
+                  ))}
+                </div>
+                {diffReport.changes.length > 8 ? <p>Showing first 8 of {diffReport.changes.length} changes.</p> : null}
+              </>
+            )}
+          </div>
+
+          <div className="meta-block">
+            <h3>Last Operation</h3>
+            {!lastOperation ? (
+              <p>No stack operation submitted yet.</p>
+            ) : (
+              <>
+                <p>{lastOperation.message}</p>
+                <p>Executed: {lastOperation.executed ? "yes" : "no"}</p>
+                <p>Dry run: {lastOperation.dry_run ? "yes" : "no"}</p>
+                <p>
+                  Audit: {lastOperation.audit.action} by {lastOperation.audit.actor}
+                </p>
+                <p>{new Date(lastOperation.audit.timestamp).toLocaleString()}</p>
+              </>
+            )}
+          </div>
+
           <p className="powered-by">Interaction model inspired by edit.gocools.</p>
         </aside>
       </div>

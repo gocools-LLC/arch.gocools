@@ -9,6 +9,10 @@ Interactive AWS architecture editor for `arch.gocools`.
 - select and move nodes
 - connect nodes with dependency edges
 - live load from `GET /api/v1/graph`
+- plan preview from `POST /api/v1/graph/diff`
+- guarded stack operations from `POST /api/v1/stacks/operations`
+- guardrail panel for required tags and destroy confirmations
+- tag stamping utility for required GoCools tags
 - JSON export/import for diagrams
 - node inspector for metadata and required GoCools tags
 
