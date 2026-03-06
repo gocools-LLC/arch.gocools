@@ -112,6 +112,13 @@ select {
   color: var(--text-dim);
 }
 
+.topbar-actions button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
 .status-row {
   border-bottom: 1px solid #d9e6e2;
   padding: 8px 18px;
@@ -331,6 +338,11 @@ select {
   background: linear-gradient(180deg, #f5fbf8, #f9fdfa);
   position: relative;
   cursor: crosshair;
+}
+
+.canvas-shell:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(15, 118, 110, 0.55);
 }
 
 .canvas-stage {

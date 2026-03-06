@@ -5,6 +5,7 @@ import {
   useState,
   type ChangeEvent,
   type DragEvent,
+  type KeyboardEvent,
   type PointerEvent,
   type WheelEvent
 } from "react";
@@ -628,6 +629,7 @@ export default function App() {
   const [isPlanning, setIsPlanning] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [isConnectingAWS, setIsConnectingAWS] = useState(false);
+  const [isCanvasFocused, setIsCanvasFocused] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -802,6 +804,8 @@ export default function App() {
   }
 
   function onCanvasPointerDown(event: PointerEvent<HTMLDivElement>): void {
+    canvasRef.current?.focus();
+
     if (event.button === 1 || mode === "pan") {
       panStateRef.current = {
         startClientX: event.clientX,
@@ -897,11 +901,53 @@ export default function App() {
     };
   }
 
-  function onCanvasWheel(event: WheelEvent<HTMLDivElement>): void {
-    if (!event.ctrlKey && !event.metaKey) {
+  function moveSelectedNodeLayer(direction: "backward" | "forward"): void {
+    if (!selectedNodeId) {
+      setStatus("Select a node first to change layer order.");
       return;
     }
 
+    setNodes((current) => {
+      const index = current.findIndex((node) => node.id === selectedNodeId);
+      if (index === -1) {
+        return current;
+      }
+
+      const nextIndex = direction === "forward" ? Math.min(index + 1, current.length - 1) : Math.max(index - 1, 0);
+      if (nextIndex === index) {
+        return current;
+      }
+
+      const next = [...current];
+      const [node] = next.splice(index, 1);
+      next.splice(nextIndex, 0, node);
+      return next;
+    });
+
+    setStatus(direction === "forward" ? "Moved selected node forward." : "Moved selected node backward.");
+  }
+
+  function zoomAtPoint(pointerX: number, pointerY: number, delta: number): void {
+    const worldX = (pointerX - pan.x) / zoom;
+    const worldY = (pointerY - pan.y) / zoom;
+    const nextZoom = clamp(zoom + delta, 0.35, 2.4);
+
+    setZoom(nextZoom);
+    setPan({
+      x: pointerX - worldX * nextZoom,
+      y: pointerY - worldY * nextZoom
+    });
+  }
+
+  function zoomAtCanvasCenter(delta: number): void {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+    zoomAtPoint(canvas.clientWidth / 2, canvas.clientHeight / 2, delta);
+  }
+
+  function onCanvasWheel(event: WheelEvent<HTMLDivElement>): void {
     event.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) {
@@ -911,18 +957,45 @@ export default function App() {
     const rect = canvas.getBoundingClientRect();
     const pointerX = event.clientX - rect.left;
     const pointerY = event.clientY - rect.top;
-
-    const worldX = (pointerX - pan.x) / zoom;
-    const worldY = (pointerY - pan.y) / zoom;
-
     const delta = event.deltaY > 0 ? -0.08 : 0.08;
-    const nextZoom = clamp(zoom + delta, 0.35, 2.4);
+    zoomAtPoint(pointerX, pointerY, delta);
+  }
 
-    setZoom(nextZoom);
-    setPan({
-      x: pointerX - worldX * nextZoom,
-      y: pointerY - worldY * nextZoom
-    });
+  function onCanvasKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    const hasModifier = event.ctrlKey || event.metaKey;
+
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      removeSelectedNode();
+      return;
+    }
+
+    if (!hasModifier) {
+      return;
+    }
+
+    if (event.key === "[" || event.code === "BracketLeft") {
+      event.preventDefault();
+      moveSelectedNodeLayer("backward");
+      return;
+    }
+
+    if (event.key === "]" || event.code === "BracketRight") {
+      event.preventDefault();
+      moveSelectedNodeLayer("forward");
+      return;
+    }
+
+    if (event.key === "+" || event.key === "=" || event.code === "NumpadAdd") {
+      event.preventDefault();
+      zoomAtCanvasCenter(0.1);
+      return;
+    }
+
+    if (event.key === "-" || event.key === "_" || event.code === "NumpadSubtract") {
+      event.preventDefault();
+      zoomAtCanvasCenter(-0.1);
+    }
   }
 
   function removeSelectedNode(): void {
@@ -1353,6 +1426,15 @@ export default function App() {
           <button onClick={openImportDialog}>Import</button>
           <button onClick={exportJson}>Export</button>
           <button onClick={loadLiveGraph}>Load Live Graph</button>
+          <button onClick={() => moveSelectedNodeLayer("backward")} disabled={!selectedNodeId}>
+            Send Back
+          </button>
+          <button onClick={() => moveSelectedNodeLayer("forward")} disabled={!selectedNodeId}>
+            Bring Front
+          </button>
+          <button onClick={removeSelectedNode} disabled={!selectedNodeId}>
+            Delete Selected
+          </button>
           <input ref={fileInputRef} type="file" accept="application/json" onChange={onImportFile} hidden />
         </div>
       </header>
@@ -1634,6 +1716,10 @@ export default function App() {
           <div
             className="canvas-shell"
             ref={canvasRef}
+            tabIndex={0}
+            onFocus={() => setIsCanvasFocused(true)}
+            onBlur={() => setIsCanvasFocused(false)}
+            onKeyDown={onCanvasKeyDown}
             onDrop={onCanvasDrop}
             onDragOver={(event) => event.preventDefault()}
             onPointerDown={onCanvasPointerDown}
@@ -1812,12 +1898,14 @@ export default function App() {
 
           <div className="meta-block">
             <h3>Canvas Stats</h3>
+            <p>Canvas focus: {isCanvasFocused ? "yes" : "no"}</p>
             <p>Frames: {frames.length}</p>
             <p>Nodes: {nodes.length}</p>
             <p>Edges: {edges.length}</p>
             <p>Mode: {mode}</p>
             <p>Baseline: {liveGraphSnapshot ? "loaded" : "not loaded"}</p>
             {connectFromId ? <p>Connecting from: {connectFromId}</p> : null}
+            <p>Shortcuts: Del, Ctrl/Cmd +/- , Ctrl/Cmd [ ]</p>
           </div>
 
           <div className="meta-block">
