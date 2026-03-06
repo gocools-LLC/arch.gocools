@@ -45,6 +45,29 @@ npm install
 npm run dev
 ```
 
+Deploy backend + frontend to OCI Terraform VMs:
+
+```bash
+./scripts/deploy-oci-stack.sh
+```
+
+Optional AWS overlay for OCI deployment:
+
+```bash
+./scripts/deploy-oci-stack.sh --aws-env-file /path/to/arch.aws.env
+```
+
+Example `arch.aws.env`:
+
+```bash
+ARCH_DISCOVERY_MODE=aws
+ARCH_AWS_REGION=us-east-1
+ARCH_AWS_ROLE_ARN=arn:aws:iam::123456789012:role/arch-readonly
+ARCH_AWS_SESSION_NAME=arch-oci
+ARCH_AWS_EXTERNAL_ID=
+ARCH_AWS_VALIDATE_ON_START=true
+```
+
 ## Repository Layout
 
 - `cmd/arch`: CLI entrypoint.
