@@ -25,6 +25,7 @@ import vpcIcon from "./assets/aws-icons/vpc.svg";
 
 type EditorMode = "select" | "connect" | "pan";
 type OperationAction = "create" | "update" | "scale" | "destroy";
+type CloudProvider = "aws" | "azure" | "gcp";
 
 type ResourceTemplate = {
   id: string;
@@ -592,6 +593,7 @@ export default function App() {
   const [dryRun, setDryRun] = useState(true);
   const [confirmDestroy, setConfirmDestroy] = useState(false);
   const [manualOverride, setManualOverride] = useState(false);
+  const [cloudProvider, setCloudProvider] = useState<CloudProvider>("aws");
   const [awsRegion, setAwsRegion] = useState("us-east-1");
   const [awsAccessKeyID, setAwsAccessKeyID] = useState("");
   const [awsSecretAccessKey, setAwsSecretAccessKey] = useState("");
@@ -601,6 +603,12 @@ export default function App() {
   const [awsExternalID, setAwsExternalID] = useState("");
   const [awsValidateOnConnect, setAwsValidateOnConnect] = useState(true);
   const [awsApplyTagFilters, setAwsApplyTagFilters] = useState(false);
+  const [azureTenantID, setAzureTenantID] = useState("");
+  const [azureClientID, setAzureClientID] = useState("");
+  const [azureClientSecret, setAzureClientSecret] = useState("");
+  const [azureSubscriptionID, setAzureSubscriptionID] = useState("");
+  const [gcpProjectID, setGcpProjectID] = useState("");
+  const [gcpServiceAccountJSON, setGcpServiceAccountJSON] = useState("");
 
   const [status, setStatus] = useState("Canvas ready.");
   const [liveGraphSnapshot, setLiveGraphSnapshot] = useState<GraphSnapshot | null>(null);
@@ -632,6 +640,12 @@ export default function App() {
   const trimmedAWSRoleARN = awsRoleARN.trim();
   const trimmedAWSSessionName = awsSessionName.trim();
   const trimmedAWSExternalID = awsExternalID.trim();
+  const trimmedAzureTenantID = azureTenantID.trim();
+  const trimmedAzureClientID = azureClientID.trim();
+  const trimmedAzureClientSecret = azureClientSecret.trim();
+  const trimmedAzureSubscriptionID = azureSubscriptionID.trim();
+  const trimmedGcpProjectID = gcpProjectID.trim();
+  const trimmedGcpServiceAccountJSON = gcpServiceAccountJSON.trim();
 
   const nodeTagGuardrails = useMemo(
     () => buildNodeTagGuardrails(nodes, trimmedStack, trimmedEnvironment),
@@ -1038,6 +1052,44 @@ export default function App() {
     }
   }
 
+  async function connectCloudAndLoadGraph(): Promise<void> {
+    if (cloudProvider === "aws") {
+      await connectAWSAndLoadGraph();
+      return;
+    }
+
+    if (cloudProvider === "azure") {
+      if (trimmedAzureTenantID === "") {
+        setStatus("Azure tenant ID is required.");
+        return;
+      }
+      if (trimmedAzureClientID === "") {
+        setStatus("Azure client ID is required.");
+        return;
+      }
+      if (trimmedAzureClientSecret === "") {
+        setStatus("Azure client secret is required.");
+        return;
+      }
+      if (trimmedAzureSubscriptionID === "") {
+        setStatus("Azure subscription ID is required.");
+        return;
+      }
+      setStatus("Azure credentials captured. Next priority: implement /api/v1/discovery/azure/graph.");
+      return;
+    }
+
+    if (trimmedGcpProjectID === "") {
+      setStatus("GCP project ID is required.");
+      return;
+    }
+    if (trimmedGcpServiceAccountJSON === "") {
+      setStatus("GCP service account JSON is required.");
+      return;
+    }
+    setStatus("GCP credentials captured. Next priority: implement /api/v1/discovery/gcp/graph.");
+  }
+
   async function generatePlan(): Promise<void> {
     if (nodeTagGuardrails.blocking.length > 0) {
       setStatus(`Plan blocked: ${nodeTagGuardrails.blocking[0]}`);
@@ -1281,7 +1333,7 @@ export default function App() {
       <header className="topbar">
         <div>
           <h1>Arch Canvas</h1>
-          <p>AWS architecture editor and control plane for Arch.gocools</p>
+          <p>Cloud architecture editor and control plane for Arch.gocools</p>
         </div>
         <div className="topbar-actions">
           <button onClick={() => setZoom((current) => clamp(current - 0.1, 0.35, 2.4))}>-</button>
@@ -1353,64 +1405,120 @@ export default function App() {
 
           <h3>Cloud Connection</h3>
           <p className="subtle">
-            Run ARCH on OCI and connect to AWS using temporary credentials or a role.
+            Run ARCH on OCI and connect to AWS, Azure, or GCP. AWS live discovery is active now.
           </p>
           <label>
-            AWS Region
-            <input value={awsRegion} onChange={(event) => setAwsRegion(event.target.value)} />
+            Cloud Provider
+            <select value={cloudProvider} onChange={(event) => setCloudProvider(event.target.value as CloudProvider)}>
+              <option value="aws">AWS</option>
+              <option value="azure">Microsoft Azure</option>
+              <option value="gcp">Google Cloud</option>
+            </select>
           </label>
-          <label>
-            Access Key ID
-            <input value={awsAccessKeyID} onChange={(event) => setAwsAccessKeyID(event.target.value)} />
-          </label>
-          <label>
-            Secret Access Key
-            <input
-              type="password"
-              value={awsSecretAccessKey}
-              onChange={(event) => setAwsSecretAccessKey(event.target.value)}
-            />
-          </label>
-          <label>
-            Session Token (optional)
-            <input
-              type="password"
-              value={awsSessionToken}
-              onChange={(event) => setAwsSessionToken(event.target.value)}
-            />
-          </label>
-          <label>
-            Role ARN (optional)
-            <input value={awsRoleARN} onChange={(event) => setAwsRoleARN(event.target.value)} />
-          </label>
-          <label>
-            External ID (optional)
-            <input value={awsExternalID} onChange={(event) => setAwsExternalID(event.target.value)} />
-          </label>
-          <label>
-            Session Name (optional)
-            <input value={awsSessionName} onChange={(event) => setAwsSessionName(event.target.value)} />
-          </label>
-          <label className="checkline">
-            <input
-              type="checkbox"
-              checked={awsValidateOnConnect}
-              onChange={(event) => setAwsValidateOnConnect(event.target.checked)}
-            />
-            Validate Credentials
-          </label>
-          <label className="checkline">
-            <input
-              type="checkbox"
-              checked={awsApplyTagFilters}
-              onChange={(event) => setAwsApplyTagFilters(event.target.checked)}
-            />
-            Apply Stack/Env Filters
-          </label>
-          <button className="solid" disabled={isConnectingAWS} onClick={connectAWSAndLoadGraph}>
-            {isConnectingAWS ? "Connecting..." : "Connect AWS + Load Graph"}
+
+          {cloudProvider === "aws" ? (
+            <>
+              <label>
+                AWS Region
+                <input value={awsRegion} onChange={(event) => setAwsRegion(event.target.value)} />
+              </label>
+              <label>
+                Access Key ID
+                <input value={awsAccessKeyID} onChange={(event) => setAwsAccessKeyID(event.target.value)} />
+              </label>
+              <label>
+                Secret Access Key
+                <input
+                  type="password"
+                  value={awsSecretAccessKey}
+                  onChange={(event) => setAwsSecretAccessKey(event.target.value)}
+                />
+              </label>
+              <label>
+                Session Token (optional)
+                <input
+                  type="password"
+                  value={awsSessionToken}
+                  onChange={(event) => setAwsSessionToken(event.target.value)}
+                />
+              </label>
+              <label>
+                Role ARN (optional)
+                <input value={awsRoleARN} onChange={(event) => setAwsRoleARN(event.target.value)} />
+              </label>
+              <label>
+                External ID (optional)
+                <input value={awsExternalID} onChange={(event) => setAwsExternalID(event.target.value)} />
+              </label>
+              <label>
+                Session Name (optional)
+                <input value={awsSessionName} onChange={(event) => setAwsSessionName(event.target.value)} />
+              </label>
+              <label className="checkline">
+                <input
+                  type="checkbox"
+                  checked={awsValidateOnConnect}
+                  onChange={(event) => setAwsValidateOnConnect(event.target.checked)}
+                />
+                Validate Credentials
+              </label>
+              <label className="checkline">
+                <input
+                  type="checkbox"
+                  checked={awsApplyTagFilters}
+                  onChange={(event) => setAwsApplyTagFilters(event.target.checked)}
+                />
+                Apply Stack/Env Filters
+              </label>
+            </>
+          ) : null}
+
+          {cloudProvider === "azure" ? (
+            <>
+              <label>
+                Tenant ID
+                <input value={azureTenantID} onChange={(event) => setAzureTenantID(event.target.value)} />
+              </label>
+              <label>
+                Client ID
+                <input value={azureClientID} onChange={(event) => setAzureClientID(event.target.value)} />
+              </label>
+              <label>
+                Client Secret
+                <input
+                  type="password"
+                  value={azureClientSecret}
+                  onChange={(event) => setAzureClientSecret(event.target.value)}
+                />
+              </label>
+              <label>
+                Subscription ID
+                <input value={azureSubscriptionID} onChange={(event) => setAzureSubscriptionID(event.target.value)} />
+              </label>
+            </>
+          ) : null}
+
+          {cloudProvider === "gcp" ? (
+            <>
+              <label>
+                Project ID
+                <input value={gcpProjectID} onChange={(event) => setGcpProjectID(event.target.value)} />
+              </label>
+              <label>
+                Service Account JSON
+                <textarea
+                  rows={4}
+                  value={gcpServiceAccountJSON}
+                  onChange={(event) => setGcpServiceAccountJSON(event.target.value)}
+                />
+              </label>
+            </>
+          ) : null}
+
+          <button className="solid" disabled={cloudProvider === "aws" && isConnectingAWS} onClick={connectCloudAndLoadGraph}>
+            {cloudProvider === "aws" && isConnectingAWS ? "Connecting..." : `Connect ${cloudProvider.toUpperCase()} + Load Graph`}
           </button>
-          {awsConnection ? (
+          {cloudProvider === "aws" && awsConnection ? (
             <div className="guard-ok">
               <p>
                 Connected: {awsConnection.identity.account_id || "unknown-account"} ({awsConnection.region})
