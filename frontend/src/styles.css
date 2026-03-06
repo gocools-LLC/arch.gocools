@@ -183,6 +183,22 @@ select {
   box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.1);
 }
 
+.palette-icon-wrap {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+}
+
+.palette-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
 .mode-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -424,19 +440,30 @@ select {
   min-width: 0;
 }
 
-.node-icon {
+.node-icon-wrap,
+.node-icon-fallback {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 34px;
-  height: 20px;
-  border-radius: 999px;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 0.58rem;
-  letter-spacing: 0.04em;
+  min-width: 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
   border: 1px solid #c0d5cf;
+  background: #f9fbfa;
+}
+
+.node-icon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.node-icon-fallback {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0.03em;
   color: #35524a;
-  background: #f4faf7;
 }
 
 .canvas-node.selected {

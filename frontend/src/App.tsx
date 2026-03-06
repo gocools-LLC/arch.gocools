@@ -8,6 +8,20 @@ import {
   type PointerEvent,
   type WheelEvent
 } from "react";
+import albIcon from "./assets/aws-icons/alb.svg";
+import apiGatewayIcon from "./assets/aws-icons/api-gateway.svg";
+import dynamodbIcon from "./assets/aws-icons/dynamodb.svg";
+import ec2Icon from "./assets/aws-icons/ec2-instance.svg";
+import ecsIcon from "./assets/aws-icons/ecs-service.svg";
+import eksIcon from "./assets/aws-icons/eks.svg";
+import internetGatewayIcon from "./assets/aws-icons/internet-gateway.svg";
+import lambdaIcon from "./assets/aws-icons/lambda.svg";
+import natGatewayIcon from "./assets/aws-icons/nat-gateway.svg";
+import rdsIcon from "./assets/aws-icons/rds.svg";
+import s3Icon from "./assets/aws-icons/s3.svg";
+import sqsIcon from "./assets/aws-icons/sqs.svg";
+import subnetIcon from "./assets/aws-icons/subnet.svg";
+import vpcIcon from "./assets/aws-icons/vpc.svg";
 
 type EditorMode = "select" | "connect" | "pan";
 type OperationAction = "create" | "update" | "scale" | "destroy";
@@ -196,21 +210,22 @@ const TYPE_COLOR_OVERRIDES: Array<{ prefix: string; color: string }> = [
   { prefix: "aws.rds.db_instance", color: "#f59e0b" }
 ];
 
-const TYPE_ICON_OVERRIDES: Array<{ prefix: string; icon: string }> = [
-  { prefix: "aws.vpc", icon: "VPC" },
-  { prefix: "aws.ec2.subnet", icon: "SUB" },
-  { prefix: "aws.ec2.internet_gateway", icon: "IGW" },
-  { prefix: "aws.ec2.nat_gateway", icon: "NAT" },
-  { prefix: "aws.ec2.instance", icon: "EC2" },
-  { prefix: "aws.ecs.service", icon: "ECS" },
-  { prefix: "aws.elbv2.load_balancer", icon: "ALB" },
-  { prefix: "aws.rds.db_instance", icon: "RDS" },
-  { prefix: "aws.rds.instance", icon: "RDS" },
-  { prefix: "aws.lambda.function", icon: "LMB" },
-  { prefix: "aws.apigateway.rest_api", icon: "API" },
-  { prefix: "aws.s3.bucket", icon: "S3" },
-  { prefix: "aws.dynamodb.table", icon: "DDB" },
-  { prefix: "aws.sqs.queue", icon: "SQS" }
+const TYPE_ICON_OVERRIDES: Array<{ prefix: string; src: string; label: string }> = [
+  { prefix: "aws.vpc", src: vpcIcon, label: "VPC" },
+  { prefix: "aws.ec2.subnet", src: subnetIcon, label: "SUB" },
+  { prefix: "aws.ec2.internet_gateway", src: internetGatewayIcon, label: "IGW" },
+  { prefix: "aws.ec2.nat_gateway", src: natGatewayIcon, label: "NAT" },
+  { prefix: "aws.ec2.instance", src: ec2Icon, label: "EC2" },
+  { prefix: "aws.ecs.service", src: ecsIcon, label: "ECS" },
+  { prefix: "aws.elbv2.load_balancer", src: albIcon, label: "ALB" },
+  { prefix: "aws.rds.db_instance", src: rdsIcon, label: "RDS" },
+  { prefix: "aws.rds.instance", src: rdsIcon, label: "RDS" },
+  { prefix: "aws.lambda.function", src: lambdaIcon, label: "LMB" },
+  { prefix: "aws.apigateway.rest_api", src: apiGatewayIcon, label: "API" },
+  { prefix: "aws.s3.bucket", src: s3Icon, label: "S3" },
+  { prefix: "aws.dynamodb.table", src: dynamodbIcon, label: "DDB" },
+  { prefix: "aws.sqs.queue", src: sqsIcon, label: "SQS" },
+  { prefix: "aws.eks.cluster", src: eksIcon, label: "EKS" }
 ];
 
 function uid(prefix: string): string {
@@ -262,12 +277,15 @@ function typeColor(type: string): string {
   return hit?.color ?? "#0f766e";
 }
 
-function typeIcon(type: string): string {
+function typeIcon(type: string): { src: string; label: string } | null {
   const override = TYPE_ICON_OVERRIDES.find((entry) => type === entry.prefix || type.startsWith(`${entry.prefix}.`));
   if (override) {
-    return override.icon;
+    return {
+      src: override.src,
+      label: override.label
+    };
   }
-  return "AWS";
+  return null;
 }
 
 function createTypedNode(
@@ -1285,17 +1303,28 @@ export default function App() {
           <p>Drag components onto the canvas.</p>
           <div className="resource-list">
             {RESOURCE_LIBRARY.map((template) => (
-              <button
-                key={template.id}
-                className="resource-item"
-                style={{ borderColor: template.color }}
-                draggable
-                onDragStart={(event) => onPaletteDragStart(event, template)}
-                onClick={() => addPaletteNode(template)}
-              >
-                <span className="dot" style={{ backgroundColor: template.color }} />
-                <span>{template.title}</span>
-              </button>
+              (() => {
+                const icon = typeIcon(template.type);
+                return (
+                  <button
+                    key={template.id}
+                    className="resource-item"
+                    style={{ borderColor: template.color }}
+                    draggable
+                    onDragStart={(event) => onPaletteDragStart(event, template)}
+                    onClick={() => addPaletteNode(template)}
+                  >
+                    {icon ? (
+                      <span className="palette-icon-wrap">
+                        <img src={icon.src} alt={`${template.title} icon`} className="palette-icon" />
+                      </span>
+                    ) : (
+                      <span className="dot" style={{ backgroundColor: template.color }} />
+                    )}
+                    <span>{template.title}</span>
+                  </button>
+                );
+              })()
             ))}
           </div>
 
@@ -1545,33 +1574,44 @@ export default function App() {
               ))}
 
               {nodes.map((node) => (
-                <button
-                  key={node.id}
-                  className={
-                    node.id === selectedNodeId
-                      ? "canvas-node selected"
-                      : node.id === connectFromId
-                        ? "canvas-node connecting"
-                        : "canvas-node"
-                  }
-                  style={{
-                    left: node.x,
-                    top: node.y,
-                    width: node.width,
-                    height: node.height,
-                    borderColor: typeColor(node.type)
-                  }}
-                  onPointerDown={(event) => onNodePointerDown(event, node)}
-                >
-                  <span className="node-type">{node.type}</span>
-                  <div className="node-heading">
-                    <span className="node-icon">{typeIcon(node.type)}</span>
-                    <strong>{node.title}</strong>
-                  </div>
-                  <small>
-                    {node.region} - {node.state}
-                  </small>
-                </button>
+                (() => {
+                  const icon = typeIcon(node.type);
+                  return (
+                    <button
+                      key={node.id}
+                      className={
+                        node.id === selectedNodeId
+                          ? "canvas-node selected"
+                          : node.id === connectFromId
+                            ? "canvas-node connecting"
+                            : "canvas-node"
+                      }
+                      style={{
+                        left: node.x,
+                        top: node.y,
+                        width: node.width,
+                        height: node.height,
+                        borderColor: typeColor(node.type)
+                      }}
+                      onPointerDown={(event) => onNodePointerDown(event, node)}
+                    >
+                      <span className="node-type">{node.type}</span>
+                      <div className="node-heading">
+                        {icon ? (
+                          <span className="node-icon-wrap">
+                            <img src={icon.src} alt={`${node.title} icon`} className="node-icon" />
+                          </span>
+                        ) : (
+                          <span className="node-icon-fallback">AWS</span>
+                        )}
+                        <strong>{node.title}</strong>
+                      </div>
+                      <small>
+                        {node.region} - {node.state}
+                      </small>
+                    </button>
+                  );
+                })()
               ))}
             </div>
           </div>
