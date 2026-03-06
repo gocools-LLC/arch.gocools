@@ -319,10 +319,76 @@ select {
   background-size: 24px 24px, 24px 24px, 120px 120px, 120px 120px;
 }
 
+.canvas-frame {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 12px;
+  border: 2px solid #94a3b8;
+  background: rgba(255, 255, 255, 0.25);
+  z-index: 1;
+}
+
+.canvas-frame.cloud {
+  border-color: #1f2937;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.canvas-frame.vpc {
+  border-color: #7c3aed;
+  background: rgba(124, 58, 237, 0.04);
+  border-radius: 14px;
+}
+
+.canvas-frame.az {
+  border-style: dashed;
+  border-color: #0ea5b7;
+  background: rgba(14, 165, 183, 0.03);
+  border-radius: 14px;
+}
+
+.canvas-frame.subnet-public {
+  border-color: #65a30d;
+  background: rgba(132, 204, 22, 0.08);
+}
+
+.canvas-frame.subnet-private {
+  border-color: #0891b2;
+  background: rgba(14, 165, 233, 0.06);
+}
+
+.frame-title {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  display: grid;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 7px;
+  padding: 4px 8px;
+  max-width: calc(100% - 20px);
+}
+
+.frame-title strong {
+  font-size: 0.78rem;
+  line-height: 1.1;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.frame-title small {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.64rem;
+  color: #475569;
+}
+
 .edges {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  z-index: 2;
 }
 
 .edge-path {
@@ -344,6 +410,7 @@ select {
   background: #ffffff;
   box-shadow: 0 8px 20px rgba(15, 41, 35, 0.2);
   cursor: grab;
+  z-index: 3;
 }
 
 .canvas-node:active {

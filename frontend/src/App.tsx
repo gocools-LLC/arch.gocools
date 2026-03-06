@@ -39,6 +39,19 @@ type EditorEdge = {
   type: string;
 };
 
+type FrameKind = "cloud" | "vpc" | "az" | "subnet-public" | "subnet-private";
+
+type EditorFrame = {
+  id: string;
+  title: string;
+  note?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  kind: FrameKind;
+};
+
 type GraphNodePayload = {
   id: string;
   type: string;
@@ -219,6 +232,13 @@ function sanitizeNodePosition(x: number, y: number): { x: number; y: number } {
   };
 }
 
+function sanitizeFramePosition(x: number, y: number, width: number, height: number): { x: number; y: number } {
+  return {
+    x: clamp(x, 12, CANVAS_WIDTH - width - 12),
+    y: clamp(y, 12, CANVAS_HEIGHT - height - 12)
+  };
+}
+
 function normalizeRequiredTags(tags: Record<string, string> | undefined): Record<string, string> {
   const next = {
     ...(tags || {})
@@ -277,6 +297,28 @@ function createTypedNode(
   };
 }
 
+function createFrame(
+  kind: FrameKind,
+  title: string,
+  note: string | undefined,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+): EditorFrame {
+  const pos = sanitizeFramePosition(x, y, width, height);
+  return {
+    id: uid("frame"),
+    kind,
+    title,
+    note,
+    x: pos.x,
+    y: pos.y,
+    width,
+    height
+  };
+}
+
 function createNode(
   template: ResourceTemplate,
   x: number,
@@ -292,38 +334,45 @@ function buildVPCStarterBlueprint(
   y: number,
   defaults: { stackId: string; environment: string; owner: string },
   region: string
-): { nodes: EditorNode[]; edges: EditorEdge[] } {
-  const vpc = createTypedNode("aws.vpc", "Main VPC", x, y, defaults, region);
-  const publicSubnet = createTypedNode("aws.ec2.subnet", "Public Subnet A", x + 250, y + 10, defaults, region);
-  const privateSubnet = createTypedNode("aws.ec2.subnet", "Private Subnet A", x + 250, y + 165, defaults, region);
-  const internetGateway = createTypedNode(
-    "aws.ec2.internet_gateway",
-    "Internet Gateway",
-    x + 250,
-    y - 145,
-    defaults,
-    region
-  );
-  const natGateway = createTypedNode("aws.ec2.nat_gateway", "NAT Gateway", x + 500, y + 10, defaults, region);
-  const alb = createTypedNode("aws.elbv2.load_balancer", "Public ALB", x + 500, y - 145, defaults, region);
-  const appService = createTypedNode("aws.ecs.service", "App Service", x + 500, y + 165, defaults, region);
-  const database = createTypedNode("aws.rds.db_instance", "RDS Database", x + 750, y + 165, defaults, region);
-
-  const nodes = [vpc, publicSubnet, privateSubnet, internetGateway, natGateway, alb, appService, database];
-  const edges: EditorEdge[] = [
-    { id: uid("edge"), from: publicSubnet.id, to: vpc.id, type: "part_of" },
-    { id: uid("edge"), from: privateSubnet.id, to: vpc.id, type: "part_of" },
-    { id: uid("edge"), from: internetGateway.id, to: vpc.id, type: "attached_to" },
-    { id: uid("edge"), from: natGateway.id, to: publicSubnet.id, type: "in_subnet" },
-    { id: uid("edge"), from: alb.id, to: publicSubnet.id, type: "in_subnet" },
-    { id: uid("edge"), from: appService.id, to: privateSubnet.id, type: "in_subnet" },
-    { id: uid("edge"), from: database.id, to: privateSubnet.id, type: "in_subnet" },
-    { id: uid("edge"), from: alb.id, to: internetGateway.id, type: "ingress_via" },
-    { id: uid("edge"), from: appService.id, to: natGateway.id, type: "egress_via" },
-    { id: uid("edge"), from: appService.id, to: database.id, type: "depends_on" }
+): { frames: EditorFrame[]; nodes: EditorNode[]; edges: EditorEdge[] } {
+  const frames: EditorFrame[] = [
+    createFrame("cloud", "AWS Cloud", undefined, x - 260, y - 210, 1280, 760),
+    createFrame("vpc", "Virtual Private Cloud (10.0.0.0/16)", undefined, x - 220, y - 160, 1200, 660),
+    createFrame("az", "Availability Zone A", undefined, x - 185, y - 110, 1120, 270),
+    createFrame("az", "Availability Zone B", undefined, x - 185, y + 200, 1120, 260),
+    createFrame("subnet-public", "Public Subnet A (10.0.1.0/24)", undefined, x - 160, y - 80, 310, 220),
+    createFrame("subnet-private", "Private Subnet A (10.0.11.0/24)", undefined, x + 210, y - 80, 690, 220),
+    createFrame("subnet-public", "Public Subnet B (10.0.2.0/24)", undefined, x - 160, y + 225, 310, 210),
+    createFrame("subnet-private", "Private Subnet B (10.0.12.0/24)", undefined, x + 210, y + 225, 690, 210)
   ];
 
-  return { nodes, edges };
+  const vpc = createTypedNode("aws.vpc", "Main VPC", x - 15, y + 160, defaults, region);
+  const internetGateway = createTypedNode("aws.ec2.internet_gateway", "Internet Gateway", x - 95, y + 18, defaults, region);
+  const alb = createTypedNode("aws.elbv2.load_balancer", "Public ALB", x + 265, y + 18, defaults, region);
+  const natGatewayA = createTypedNode("aws.ec2.nat_gateway", "NAT Gateway A", x - 95, y + 100, defaults, region);
+  const natGatewayB = createTypedNode("aws.ec2.nat_gateway", "NAT Gateway B", x - 95, y + 315, defaults, region);
+  const appServiceA = createTypedNode("aws.ecs.service", "App Service A", x + 350, y + 95, defaults, region);
+  const appServiceB = createTypedNode("aws.ecs.service", "App Service B", x + 350, y + 315, defaults, region);
+  const database = createTypedNode("aws.rds.db_instance", "RDS Database", x + 640, y + 210, defaults, region);
+  const eksControlPlane = createTypedNode("aws.eks.cluster", "EKS Control Plane", x + 865, y + 160, defaults, region);
+
+  const nodes = [vpc, internetGateway, alb, natGatewayA, natGatewayB, appServiceA, appServiceB, database, eksControlPlane];
+  const edges: EditorEdge[] = [
+    { id: uid("edge"), from: internetGateway.id, to: vpc.id, type: "attached_to" },
+    { id: uid("edge"), from: alb.id, to: internetGateway.id, type: "ingress_via" },
+    { id: uid("edge"), from: natGatewayA.id, to: internetGateway.id, type: "egress_via" },
+    { id: uid("edge"), from: natGatewayB.id, to: internetGateway.id, type: "egress_via" },
+    { id: uid("edge"), from: appServiceA.id, to: natGatewayA.id, type: "egress_via" },
+    { id: uid("edge"), from: appServiceB.id, to: natGatewayB.id, type: "egress_via" },
+    { id: uid("edge"), from: alb.id, to: appServiceA.id, type: "routes_to" },
+    { id: uid("edge"), from: alb.id, to: appServiceB.id, type: "routes_to" },
+    { id: uid("edge"), from: appServiceA.id, to: database.id, type: "depends_on" },
+    { id: uid("edge"), from: appServiceB.id, to: database.id, type: "depends_on" },
+    { id: uid("edge"), from: appServiceA.id, to: eksControlPlane.id, type: "managed_by" },
+    { id: uid("edge"), from: appServiceB.id, to: eksControlPlane.id, type: "managed_by" }
+  ];
+
+  return { frames, nodes, edges };
 }
 
 function mapGraphToCanvas(payload: GraphSnapshot): { nodes: EditorNode[]; edges: EditorEdge[] } {
@@ -445,19 +494,24 @@ function summarizeDiff(change: GraphDiffChange): string {
     .join("; ");
 }
 
-function loadSaved(): { nodes: EditorNode[]; edges: EditorEdge[] } {
+function loadSaved(): { frames: EditorFrame[]; nodes: EditorNode[]; edges: EditorEdge[] } {
   if (typeof window === "undefined") {
-    return { nodes: [], edges: [] };
+    return { frames: [], nodes: [], edges: [] };
   }
 
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) {
-    return { nodes: [], edges: [] };
+    return { frames: [], nodes: [], edges: [] };
   }
 
   try {
-    const parsed = JSON.parse(raw) as { nodes?: EditorNode[]; edges?: EditorEdge[] };
+    const parsed = JSON.parse(raw) as { frames?: EditorFrame[]; nodes?: EditorNode[]; edges?: EditorEdge[] };
     return {
+      frames: Array.isArray(parsed.frames)
+        ? parsed.frames.map((frame) => ({
+            ...frame
+          }))
+        : [],
       nodes: Array.isArray(parsed.nodes)
         ? parsed.nodes.map((node) => ({
             ...node,
@@ -469,7 +523,7 @@ function loadSaved(): { nodes: EditorNode[]; edges: EditorEdge[] } {
       edges: Array.isArray(parsed.edges) ? parsed.edges : []
     };
   } catch {
-    return { nodes: [], edges: [] };
+    return { frames: [], nodes: [], edges: [] };
   }
 }
 
@@ -502,6 +556,7 @@ type PanState = {
 export default function App() {
   const loaded = useMemo(() => loadSaved(), []);
 
+  const [frames, setFrames] = useState<EditorFrame[]>(loaded.frames);
   const [nodes, setNodes] = useState<EditorNode[]>(loaded.nodes);
   const [edges, setEdges] = useState<EditorEdge[]>(loaded.edges);
   const [mode, setMode] = useState<EditorMode>("select");
@@ -631,11 +686,12 @@ export default function App() {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
+        frames,
         nodes,
         edges
       })
     );
-  }, [nodes, edges]);
+  }, [frames, nodes, edges]);
 
   useEffect(() => {
     if (connectFromId && !nodes.some((node) => node.id === connectFromId)) {
@@ -673,9 +729,12 @@ export default function App() {
 
     if (template.id === "vpc") {
       const starter = buildVPCStarterBlueprint(x, y, defaults, region);
+      setFrames((current) => [...current, ...starter.frames]);
       setNodes((current) => [...current, ...starter.nodes]);
       setEdges((current) => [...current, ...starter.edges]);
-      setStatus(`${action} VPC starter blueprint (${starter.nodes.length} nodes, ${starter.edges.length} links).`);
+      setStatus(
+        `${action} VPC blueprint (${starter.frames.length} frames, ${starter.nodes.length} nodes, ${starter.edges.length} links).`
+      );
       return;
     }
 
@@ -836,6 +895,7 @@ export default function App() {
   }
 
   function clearCanvas(): void {
+    setFrames([]);
     setNodes([]);
     setEdges([]);
     setSelectedNodeId(null);
@@ -871,6 +931,7 @@ export default function App() {
     try {
       const payload = await fetchLiveGraphSnapshot();
       const mapped = mapGraphToCanvas(payload);
+      setFrames([]);
       setNodes(mapped.nodes);
       setEdges(mapped.edges);
       setLiveGraphSnapshot(payload);
@@ -940,6 +1001,7 @@ export default function App() {
 
       const payload = (await response.json()) as AWSConnectResponse;
       const mapped = mapGraphToCanvas(payload.graph);
+      setFrames([]);
       setNodes(mapped.nodes);
       setEdges(mapped.edges);
       setLiveGraphSnapshot(payload.graph);
@@ -1116,6 +1178,7 @@ export default function App() {
     const payload = {
       schema_version: "arch.frontend/v1alpha1",
       exported_at: new Date().toISOString(),
+      frames,
       nodes,
       edges,
       viewport: { zoom, pan }
@@ -1144,11 +1207,16 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const parsed = JSON.parse(String(reader.result)) as { nodes?: EditorNode[]; edges?: EditorEdge[] };
+        const parsed = JSON.parse(String(reader.result)) as {
+          frames?: EditorFrame[];
+          nodes?: EditorNode[];
+          edges?: EditorEdge[];
+        };
         if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
           throw new Error("invalid diagram payload");
         }
 
+        const importedFrames = Array.isArray(parsed.frames) ? parsed.frames : [];
         const importedNodes = parsed.nodes.map((node) => ({
           ...node,
           width: node.width || NODE_WIDTH,
@@ -1156,12 +1224,13 @@ export default function App() {
           tags: normalizeRequiredTags(node.tags)
         }));
 
+        setFrames(importedFrames);
         setNodes(importedNodes);
         setEdges(parsed.edges);
         setSelectedNodeId(null);
         setConnectFromId(null);
         setDiffReport(null);
-        setStatus(`Imported ${parsed.nodes.length} nodes.`);
+      setStatus(`Imported ${parsed.nodes.length} nodes.`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         setStatus(`Import failed: ${message}`);
@@ -1457,6 +1526,24 @@ export default function App() {
                 })}
               </svg>
 
+              {frames.map((frame) => (
+                <div
+                  key={frame.id}
+                  className={`canvas-frame ${frame.kind}`}
+                  style={{
+                    left: frame.x,
+                    top: frame.y,
+                    width: frame.width,
+                    height: frame.height
+                  }}
+                >
+                  <div className="frame-title">
+                    <strong>{frame.title}</strong>
+                    {frame.note ? <small>{frame.note}</small> : null}
+                  </div>
+                </div>
+              ))}
+
               {nodes.map((node) => (
                 <button
                   key={node.id}
@@ -1568,6 +1655,7 @@ export default function App() {
 
           <div className="meta-block">
             <h3>Canvas Stats</h3>
+            <p>Frames: {frames.length}</p>
             <p>Nodes: {nodes.length}</p>
             <p>Edges: {edges.length}</p>
             <p>Mode: {mode}</p>
