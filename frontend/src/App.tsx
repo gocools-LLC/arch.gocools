@@ -185,8 +185,8 @@ type GuardrailState = {
 const STORAGE_KEY = "arch.frontend.canvas.v1";
 const CANVAS_WIDTH = 4200;
 const CANVAS_HEIGHT = 2600;
-const NODE_WIDTH = 190;
-const NODE_HEIGHT = 88;
+const NODE_WIDTH = 238;
+const NODE_HEIGHT = 98;
 const REQUIRED_TAG_KEYS = ["gocools:stack-id", "gocools:environment", "gocools:owner"] as const;
 
 const RESOURCE_LIBRARY: ResourceTemplate[] = [
@@ -239,6 +239,11 @@ function clamp(value: number, min: number, max: number): number {
 
 function centerOf(node: EditorNode): { x: number; y: number } {
   return { x: node.x + node.width / 2, y: node.y + node.height / 2 };
+}
+
+function orthogonalPath(start: { x: number; y: number }, end: { x: number; y: number }): string {
+  const bendX = Math.round((start.x + end.x) / 2);
+  return `M ${start.x} ${start.y} L ${bendX} ${start.y} L ${bendX} ${end.y} L ${end.x} ${end.y}`;
 }
 
 function sanitizeNodePosition(x: number, y: number): { x: number; y: number } {
@@ -354,26 +359,29 @@ function buildVPCStarterBlueprint(
   defaults: { stackId: string; environment: string; owner: string },
   region: string
 ): { frames: EditorFrame[]; nodes: EditorNode[]; edges: EditorEdge[] } {
+  const left = x;
+  const top = y;
+
   const frames: EditorFrame[] = [
-    createFrame("cloud", "AWS Cloud", undefined, x - 260, y - 210, 1280, 760),
-    createFrame("vpc", "Virtual Private Cloud (10.0.0.0/16)", undefined, x - 220, y - 160, 1200, 660),
-    createFrame("az", "Availability Zone A", undefined, x - 185, y - 110, 1120, 270),
-    createFrame("az", "Availability Zone B", undefined, x - 185, y + 200, 1120, 260),
-    createFrame("subnet-public", "Public Subnet A (10.0.1.0/24)", undefined, x - 160, y - 80, 310, 220),
-    createFrame("subnet-private", "Private Subnet A (10.0.11.0/24)", undefined, x + 210, y - 80, 690, 220),
-    createFrame("subnet-public", "Public Subnet B (10.0.2.0/24)", undefined, x - 160, y + 225, 310, 210),
-    createFrame("subnet-private", "Private Subnet B (10.0.12.0/24)", undefined, x + 210, y + 225, 690, 210)
+    createFrame("cloud", "AWS Cloud", undefined, left - 240, top - 190, 1400, 860),
+    createFrame("vpc", "Virtual Private Cloud (10.0.0.0/16)", undefined, left - 200, top - 140, 1320, 760),
+    createFrame("az", "Availability Zone A", undefined, left - 165, top - 98, 1240, 300),
+    createFrame("az", "Availability Zone B", undefined, left - 165, top + 248, 1240, 300),
+    createFrame("subnet-public", "Public Subnet A (10.0.1.0/24)", undefined, left - 140, top - 60, 360, 235),
+    createFrame("subnet-private", "Private Subnet A (10.0.11.0/24)", undefined, left + 260, top - 60, 780, 235),
+    createFrame("subnet-public", "Public Subnet B (10.0.2.0/24)", undefined, left - 140, top + 286, 360, 235),
+    createFrame("subnet-private", "Private Subnet B (10.0.12.0/24)", undefined, left + 260, top + 286, 780, 235)
   ];
 
-  const vpc = createTypedNode("aws.vpc", "Main VPC", x - 15, y + 160, defaults, region);
-  const internetGateway = createTypedNode("aws.ec2.internet_gateway", "Internet Gateway", x - 95, y + 18, defaults, region);
-  const alb = createTypedNode("aws.elbv2.load_balancer", "Public ALB", x + 265, y + 18, defaults, region);
-  const natGatewayA = createTypedNode("aws.ec2.nat_gateway", "NAT Gateway A", x - 95, y + 100, defaults, region);
-  const natGatewayB = createTypedNode("aws.ec2.nat_gateway", "NAT Gateway B", x - 95, y + 315, defaults, region);
-  const appServiceA = createTypedNode("aws.ecs.service", "App Service A", x + 350, y + 95, defaults, region);
-  const appServiceB = createTypedNode("aws.ecs.service", "App Service B", x + 350, y + 315, defaults, region);
-  const database = createTypedNode("aws.rds.db_instance", "RDS Database", x + 640, y + 210, defaults, region);
-  const eksControlPlane = createTypedNode("aws.eks.cluster", "EKS Control Plane", x + 865, y + 160, defaults, region);
+  const vpc = createTypedNode("aws.vpc", "Main VPC", left + 170, top + 220, defaults, region);
+  const internetGateway = createTypedNode("aws.ec2.internet_gateway", "Internet Gateway", left - 60, top + 18, defaults, region);
+  const alb = createTypedNode("aws.elbv2.load_balancer", "Public ALB", left + 360, top + 18, defaults, region);
+  const natGatewayA = createTypedNode("aws.ec2.nat_gateway", "NAT Gateway A", left - 60, top + 120, defaults, region);
+  const natGatewayB = createTypedNode("aws.ec2.nat_gateway", "NAT Gateway B", left - 60, top + 360, defaults, region);
+  const appServiceA = createTypedNode("aws.ecs.service", "App Service A", left + 430, top + 100, defaults, region);
+  const appServiceB = createTypedNode("aws.ecs.service", "App Service B", left + 430, top + 360, defaults, region);
+  const database = createTypedNode("aws.rds.db_instance", "RDS Database", left + 770, top + 226, defaults, region);
+  const eksControlPlane = createTypedNode("aws.eks.cluster", "EKS Control Plane", left + 1030, top + 226, defaults, region);
 
   const nodes = [vpc, internetGateway, alb, natGatewayA, natGatewayB, appServiceA, appServiceB, database, eksControlPlane];
   const edges: EditorEdge[] = [
@@ -381,6 +389,8 @@ function buildVPCStarterBlueprint(
     { id: uid("edge"), from: alb.id, to: internetGateway.id, type: "ingress_via" },
     { id: uid("edge"), from: natGatewayA.id, to: internetGateway.id, type: "egress_via" },
     { id: uid("edge"), from: natGatewayB.id, to: internetGateway.id, type: "egress_via" },
+    { id: uid("edge"), from: appServiceA.id, to: alb.id, type: "serves" },
+    { id: uid("edge"), from: appServiceB.id, to: alb.id, type: "serves" },
     { id: uid("edge"), from: appServiceA.id, to: natGatewayA.id, type: "egress_via" },
     { id: uid("edge"), from: appServiceB.id, to: natGatewayB.id, type: "egress_via" },
     { id: uid("edge"), from: alb.id, to: appServiceA.id, type: "routes_to" },
@@ -581,7 +591,7 @@ export default function App() {
   const [mode, setMode] = useState<EditorMode>("select");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [connectFromId, setConnectFromId] = useState<string | null>(null);
-  const [zoom, setZoom] = useState<number>(0.95);
+  const [zoom, setZoom] = useState<number>(0.82);
   const [pan, setPan] = useState({ x: 120, y: 80 });
 
   const [stackFilter, setStackFilter] = useState("dev-stack");
@@ -1656,8 +1666,7 @@ export default function App() {
 
                   const start = centerOf(from);
                   const end = centerOf(to);
-                  const controlX = (start.x + end.x) / 2;
-                  const path = `M ${start.x} ${start.y} C ${controlX} ${start.y}, ${controlX} ${end.y}, ${end.x} ${end.y}`;
+                  const path = orthogonalPath(start, end);
 
                   return <path key={edge.id} d={path} className="edge-path" markerEnd="url(#arrow)" />;
                 })}

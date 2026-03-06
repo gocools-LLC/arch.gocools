@@ -394,7 +394,7 @@ select {
 }
 
 .frame-title strong {
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   line-height: 1.1;
   color: #1f2937;
   white-space: nowrap;
@@ -404,7 +404,7 @@ select {
 
 .frame-title small {
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.64rem;
+  font-size: 0.68rem;
   color: #475569;
 }
 
@@ -418,8 +418,8 @@ select {
 .edge-path {
   fill: none;
   stroke: #0f766e;
-  stroke-width: 2;
-  opacity: 0.8;
+  stroke-width: 1.8;
+  opacity: 0.9;
 }
 
 .canvas-node {
@@ -429,10 +429,10 @@ select {
   align-content: center;
   text-align: left;
   border: 2px solid;
-  border-radius: 12px;
-  padding: 10px 12px;
-  background: #ffffff;
-  box-shadow: 0 8px 20px rgba(15, 41, 35, 0.2);
+  border-radius: 10px;
+  padding: 9px 12px 10px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfa 100%);
+  box-shadow: 0 6px 16px rgba(15, 41, 35, 0.18);
   cursor: grab;
   z-index: 3;
 }
@@ -453,17 +453,17 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 30px;
-  width: 30px;
-  height: 30px;
+  min-width: 34px;
+  width: 34px;
+  height: 34px;
   border-radius: 7px;
   border: 1px solid #c0d5cf;
-  background: #f9fbfa;
+  background: #ffffff;
 }
 
 .node-icon {
-  width: 22px;
-  height: 22px;
+  width: 25px;
+  height: 25px;
   object-fit: contain;
 }
 
@@ -484,16 +484,16 @@ select {
 
 .node-type {
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.67rem;
-  color: #3f5d55;
+  font-size: 0.63rem;
+  color: #5b716b;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .canvas-node strong {
-  font-size: 0.96rem;
-  line-height: 1.1;
+  font-size: 0.99rem;
+  line-height: 1.12;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -501,7 +501,7 @@ select {
 
 .canvas-node small {
   color: var(--text-dim);
-  font-size: 0.74rem;
+  font-size: 0.72rem;
 }
 
 .inspector .danger {
