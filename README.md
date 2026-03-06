@@ -37,11 +37,20 @@ ARCH_AWS_VALIDATE_ON_START=true \
 go run ./cmd/arch
 ```
 
+Run the visual editor frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
 ## Repository Layout
 
 - `cmd/arch`: CLI entrypoint.
 - `internal/`: internal application logic.
 - `pkg/`: reusable packages.
+- `frontend/`: interactive architecture editor UI.
 - `docs/`: architecture, roadmap, and RFCs.
 
 ## Security Model
