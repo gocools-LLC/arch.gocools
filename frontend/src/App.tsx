@@ -174,6 +174,32 @@ const RESOURCE_LIBRARY: ResourceTemplate[] = [
   { id: "vpc", type: "aws.vpc", title: "VPC", color: "#334155" }
 ];
 
+const TYPE_COLOR_OVERRIDES: Array<{ prefix: string; color: string }> = [
+  { prefix: "aws.vpc", color: "#334155" },
+  { prefix: "aws.ec2.subnet", color: "#64748b" },
+  { prefix: "aws.ec2.internet_gateway", color: "#f43f5e" },
+  { prefix: "aws.ec2.nat_gateway", color: "#f97316" },
+  { prefix: "aws.ec2.route_table", color: "#0ea5e9" },
+  { prefix: "aws.rds.db_instance", color: "#f59e0b" }
+];
+
+const TYPE_ICON_OVERRIDES: Array<{ prefix: string; icon: string }> = [
+  { prefix: "aws.vpc", icon: "VPC" },
+  { prefix: "aws.ec2.subnet", icon: "SUB" },
+  { prefix: "aws.ec2.internet_gateway", icon: "IGW" },
+  { prefix: "aws.ec2.nat_gateway", icon: "NAT" },
+  { prefix: "aws.ec2.instance", icon: "EC2" },
+  { prefix: "aws.ecs.service", icon: "ECS" },
+  { prefix: "aws.elbv2.load_balancer", icon: "ALB" },
+  { prefix: "aws.rds.db_instance", icon: "RDS" },
+  { prefix: "aws.rds.instance", icon: "RDS" },
+  { prefix: "aws.lambda.function", icon: "LMB" },
+  { prefix: "aws.apigateway.rest_api", icon: "API" },
+  { prefix: "aws.s3.bucket", icon: "S3" },
+  { prefix: "aws.dynamodb.table", icon: "DDB" },
+  { prefix: "aws.sqs.queue", icon: "SQS" }
+];
+
 function uid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -208,26 +234,40 @@ function normalizeRequiredTags(tags: Record<string, string> | undefined): Record
 }
 
 function typeColor(type: string): string {
+  const override = TYPE_COLOR_OVERRIDES.find((entry) => type === entry.prefix || type.startsWith(`${entry.prefix}.`));
+  if (override) {
+    return override.color;
+  }
   const hit = RESOURCE_LIBRARY.find((entry) => type === entry.type || type.startsWith(`${entry.type}.`));
   return hit?.color ?? "#0f766e";
 }
 
-function createNode(
-  template: ResourceTemplate,
+function typeIcon(type: string): string {
+  const override = TYPE_ICON_OVERRIDES.find((entry) => type === entry.prefix || type.startsWith(`${entry.prefix}.`));
+  if (override) {
+    return override.icon;
+  }
+  return "AWS";
+}
+
+function createTypedNode(
+  type: string,
+  title: string,
   x: number,
   y: number,
-  defaults: { stackId: string; environment: string; owner: string }
+  defaults: { stackId: string; environment: string; owner: string },
+  region: string
 ): EditorNode {
   const pos = sanitizeNodePosition(x, y);
   return {
     id: uid("node"),
-    type: template.type,
-    title: template.title,
+    type,
+    title,
     x: pos.x,
     y: pos.y,
     width: NODE_WIDTH,
     height: NODE_HEIGHT,
-    region: "us-east-1",
+    region,
     state: "active",
     tags: normalizeRequiredTags({
       "gocools:stack-id": defaults.stackId,
@@ -235,6 +275,55 @@ function createNode(
       "gocools:owner": defaults.owner
     })
   };
+}
+
+function createNode(
+  template: ResourceTemplate,
+  x: number,
+  y: number,
+  defaults: { stackId: string; environment: string; owner: string },
+  region: string
+): EditorNode {
+  return createTypedNode(template.type, template.title, x, y, defaults, region);
+}
+
+function buildVPCStarterBlueprint(
+  x: number,
+  y: number,
+  defaults: { stackId: string; environment: string; owner: string },
+  region: string
+): { nodes: EditorNode[]; edges: EditorEdge[] } {
+  const vpc = createTypedNode("aws.vpc", "Main VPC", x, y, defaults, region);
+  const publicSubnet = createTypedNode("aws.ec2.subnet", "Public Subnet A", x + 250, y + 10, defaults, region);
+  const privateSubnet = createTypedNode("aws.ec2.subnet", "Private Subnet A", x + 250, y + 165, defaults, region);
+  const internetGateway = createTypedNode(
+    "aws.ec2.internet_gateway",
+    "Internet Gateway",
+    x + 250,
+    y - 145,
+    defaults,
+    region
+  );
+  const natGateway = createTypedNode("aws.ec2.nat_gateway", "NAT Gateway", x + 500, y + 10, defaults, region);
+  const alb = createTypedNode("aws.elbv2.load_balancer", "Public ALB", x + 500, y - 145, defaults, region);
+  const appService = createTypedNode("aws.ecs.service", "App Service", x + 500, y + 165, defaults, region);
+  const database = createTypedNode("aws.rds.db_instance", "RDS Database", x + 750, y + 165, defaults, region);
+
+  const nodes = [vpc, publicSubnet, privateSubnet, internetGateway, natGateway, alb, appService, database];
+  const edges: EditorEdge[] = [
+    { id: uid("edge"), from: publicSubnet.id, to: vpc.id, type: "part_of" },
+    { id: uid("edge"), from: privateSubnet.id, to: vpc.id, type: "part_of" },
+    { id: uid("edge"), from: internetGateway.id, to: vpc.id, type: "attached_to" },
+    { id: uid("edge"), from: natGateway.id, to: publicSubnet.id, type: "in_subnet" },
+    { id: uid("edge"), from: alb.id, to: publicSubnet.id, type: "in_subnet" },
+    { id: uid("edge"), from: appService.id, to: privateSubnet.id, type: "in_subnet" },
+    { id: uid("edge"), from: database.id, to: privateSubnet.id, type: "in_subnet" },
+    { id: uid("edge"), from: alb.id, to: internetGateway.id, type: "ingress_via" },
+    { id: uid("edge"), from: appService.id, to: natGateway.id, type: "egress_via" },
+    { id: uid("edge"), from: appService.id, to: database.id, type: "depends_on" }
+  ];
+
+  return { nodes, edges };
 }
 
 function mapGraphToCanvas(payload: GraphSnapshot): { nodes: EditorNode[]; edges: EditorEdge[] } {
@@ -569,15 +658,29 @@ export default function App() {
 
   function addPaletteNode(template: ResourceTemplate): void {
     const point = worldPoint(window.innerWidth / 2, window.innerHeight / 2);
-    setNodes((current) => [
-      ...current,
-      createNode(template, point.x - NODE_WIDTH / 2, point.y - NODE_HEIGHT / 2, {
-        stackId: trimmedStack || "dev-stack",
-        environment: trimmedEnvironment || "dev",
-        owner: trimmedOwner || "platform-team"
-      })
-    ]);
-    setStatus(`Added ${template.title}.`);
+    addTemplateToCanvas(template, point.x, point.y, "Added");
+  }
+
+  function addTemplateToCanvas(template: ResourceTemplate, worldX: number, worldY: number, action: "Added" | "Dropped"): void {
+    const defaults = {
+      stackId: trimmedStack || "dev-stack",
+      environment: trimmedEnvironment || "dev",
+      owner: trimmedOwner || "platform-team"
+    };
+    const region = trimmedAWSRegion || "us-east-1";
+    const x = worldX - NODE_WIDTH / 2;
+    const y = worldY - NODE_HEIGHT / 2;
+
+    if (template.id === "vpc") {
+      const starter = buildVPCStarterBlueprint(x, y, defaults, region);
+      setNodes((current) => [...current, ...starter.nodes]);
+      setEdges((current) => [...current, ...starter.edges]);
+      setStatus(`${action} VPC starter blueprint (${starter.nodes.length} nodes, ${starter.edges.length} links).`);
+      return;
+    }
+
+    setNodes((current) => [...current, createNode(template, x, y, defaults, region)]);
+    setStatus(action === "Added" ? `Added ${template.title}.` : `Dropped ${template.title} on canvas.`);
   }
 
   function onPaletteDragStart(event: DragEvent<HTMLButtonElement>, template: ResourceTemplate): void {
@@ -594,15 +697,7 @@ export default function App() {
     }
 
     const point = worldPoint(event.clientX, event.clientY);
-    setNodes((current) => [
-      ...current,
-      createNode(template, point.x - NODE_WIDTH / 2, point.y - NODE_HEIGHT / 2, {
-        stackId: trimmedStack || "dev-stack",
-        environment: trimmedEnvironment || "dev",
-        owner: trimmedOwner || "platform-team"
-      })
-    ]);
-    setStatus(`Dropped ${template.title} on canvas.`);
+    addTemplateToCanvas(template, point.x, point.y, "Dropped");
   }
 
   function onCanvasPointerDown(event: PointerEvent<HTMLDivElement>): void {
@@ -1382,7 +1477,10 @@ export default function App() {
                   onPointerDown={(event) => onNodePointerDown(event, node)}
                 >
                   <span className="node-type">{node.type}</span>
-                  <strong>{node.title}</strong>
+                  <div className="node-heading">
+                    <span className="node-icon">{typeIcon(node.type)}</span>
+                    <strong>{node.title}</strong>
+                  </div>
                   <small>
                     {node.region} - {node.state}
                   </small>
