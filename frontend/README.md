@@ -10,12 +10,14 @@ Interactive AWS architecture editor for `arch.gocools`.
 - connect nodes with dependency edges
 - live load from `GET /api/v1/graph`
 - AWS credential connect from UI via `POST /api/v1/discovery/aws/graph`
+- optional stack/environment filter toggle during AWS connect (off by default)
 - plan preview from `POST /api/v1/graph/diff`
 - guarded stack operations from `POST /api/v1/stacks/operations`
 - guardrail panel for required tags and destroy confirmations
 - tag stamping utility for required GoCools tags
 - JSON export/import for diagrams
 - node inspector for metadata and required GoCools tags
+- inferred topology edges for discovered network resources (`in_subnet`, `part_of`, `in_vpc`)
 
 ## Run
 

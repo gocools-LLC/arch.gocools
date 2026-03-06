@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ArchDiscoveryReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "sts:GetCallerIdentity",
+        "ec2:DescribeInstances",
+        "ecs:ListClusters",
+        "ecs:ListServices",
+        "ecs:DescribeServices",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "rds:DescribeDBInstances"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

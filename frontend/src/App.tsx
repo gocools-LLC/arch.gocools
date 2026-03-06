@@ -438,6 +438,7 @@ export default function App() {
   const [awsSessionName, setAwsSessionName] = useState("arch-ui-session");
   const [awsExternalID, setAwsExternalID] = useState("");
   const [awsValidateOnConnect, setAwsValidateOnConnect] = useState(true);
+  const [awsApplyTagFilters, setAwsApplyTagFilters] = useState(false);
 
   const [status, setStatus] = useState("Canvas ready.");
   const [liveGraphSnapshot, setLiveGraphSnapshot] = useState<GraphSnapshot | null>(null);
@@ -823,10 +824,10 @@ export default function App() {
       if (trimmedAWSExternalID !== "") {
         requestBody.external_id = trimmedAWSExternalID;
       }
-      if (trimmedStack !== "") {
+      if (awsApplyTagFilters && trimmedStack !== "") {
         requestBody.stack_id = trimmedStack;
       }
-      if (trimmedEnvironment !== "") {
+      if (awsApplyTagFilters && trimmedEnvironment !== "") {
         requestBody.environment = trimmedEnvironment;
       }
 
@@ -1204,6 +1205,14 @@ export default function App() {
               onChange={(event) => setAwsValidateOnConnect(event.target.checked)}
             />
             Validate Credentials
+          </label>
+          <label className="checkline">
+            <input
+              type="checkbox"
+              checked={awsApplyTagFilters}
+              onChange={(event) => setAwsApplyTagFilters(event.target.checked)}
+            />
+            Apply Stack/Env Filters
           </label>
           <button className="solid" disabled={isConnectingAWS} onClick={connectAWSAndLoadGraph}>
             {isConnectingAWS ? "Connecting..." : "Connect AWS + Load Graph"}

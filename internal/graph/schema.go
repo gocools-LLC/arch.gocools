@@ -2,6 +2,7 @@ package graph
 
 import (
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/gocools-LLC/arch.gocools/internal/discovery/model"
@@ -56,6 +57,65 @@ func FromResources(resources []model.Resource, generatedAt time.Time) Graph {
 		})
 	}
 
+	syntheticNodes := map[string]Node{}
+	edges := make([]Edge, 0, len(resources))
+	edgeKeys := map[string]struct{}{}
+	addEdge := func(from string, to string, edgeType string) {
+		from = strings.TrimSpace(from)
+		to = strings.TrimSpace(to)
+		if from == "" || to == "" {
+			return
+		}
+		key := from + "|" + to + "|" + edgeType
+		if _, exists := edgeKeys[key]; exists {
+			return
+		}
+		edgeKeys[key] = struct{}{}
+		edges = append(edges, Edge{
+			From: from,
+			To:   to,
+			Type: edgeType,
+			Metadata: map[string]string{
+				"source": "arch.inference",
+			},
+		})
+	}
+
+	for _, resource := range resources {
+		resourceID := strings.TrimSpace(resource.ID)
+		if resourceID == "" {
+			continue
+		}
+
+		vpcID := strings.TrimSpace(resource.Metadata["vpc_id"])
+		subnetID := strings.TrimSpace(resource.Metadata["subnet_id"])
+		if vpcID == "" && subnetID == "" {
+			continue
+		}
+
+		provider := strings.TrimSpace(resource.Provider)
+		if provider == "" {
+			provider = "aws"
+		}
+
+		if subnetID != "" {
+			subnetNodeID := ensureSyntheticTopologyNode(syntheticNodes, "subnet", subnetID, provider, resource.Region, resource.Tags)
+			addEdge(resourceID, subnetNodeID, "in_subnet")
+			if vpcID != "" {
+				vpcNodeID := ensureSyntheticTopologyNode(syntheticNodes, "vpc", vpcID, provider, resource.Region, resource.Tags)
+				addEdge(subnetNodeID, vpcNodeID, "part_of")
+			}
+			continue
+		}
+
+		vpcNodeID := ensureSyntheticTopologyNode(syntheticNodes, "vpc", vpcID, provider, resource.Region, resource.Tags)
+		addEdge(resourceID, vpcNodeID, "in_vpc")
+	}
+
+	for _, node := range syntheticNodes {
+		nodes = append(nodes, node)
+	}
+
 	slices.SortFunc(nodes, func(a, b Node) int {
 		if a.ID < b.ID {
 			return -1
@@ -70,7 +130,7 @@ func FromResources(resources []model.Resource, generatedAt time.Time) Graph {
 		SchemaVersion: SchemaVersion,
 		GeneratedAt:   generatedAt.UTC(),
 		Nodes:         nodes,
-		Edges:         []Edge{},
+		Edges:         edges,
 	}
 }
 
@@ -132,4 +192,55 @@ func cloneMap(value map[string]string) map[string]string {
 		cloned[key] = item
 	}
 	return cloned
+}
+
+func ensureSyntheticTopologyNode(
+	syntheticNodes map[string]Node,
+	kind string,
+	resourceID string,
+	provider string,
+	region string,
+	sourceTags map[string]string,
+) string {
+	nodeID := "synthetic:" + kind + ":" + region + ":" + resourceID
+	existing, ok := syntheticNodes[nodeID]
+	if !ok {
+		existing = Node{
+			ID:       nodeID,
+			Type:     provider + ".ec2." + kind,
+			Provider: provider,
+			Region:   region,
+			Name:     resourceID,
+			State:    "discovered",
+			Tags:     map[string]string{},
+			Metadata: map[string]string{
+				"synthetic": "true",
+				"source":    "arch.inference",
+				"kind":      kind,
+			},
+		}
+	}
+	existing.Tags = mergeTopologyTags(existing.Tags, sourceTags)
+	syntheticNodes[nodeID] = existing
+	return nodeID
+}
+
+func mergeTopologyTags(existing map[string]string, source map[string]string) map[string]string {
+	merged := cloneMap(existing)
+	for _, key := range []string{"gocools:stack-id", "gocools:environment", "gocools:owner"} {
+		sourceValue := strings.TrimSpace(source[key])
+		if sourceValue == "" {
+			continue
+		}
+
+		currentValue := strings.TrimSpace(merged[key])
+		if currentValue == "" {
+			merged[key] = sourceValue
+			continue
+		}
+		if currentValue != sourceValue {
+			merged[key] = ""
+		}
+	}
+	return merged
 }

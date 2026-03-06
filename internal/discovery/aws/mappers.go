@@ -81,6 +81,11 @@ func mapLoadBalancer(loadBalancer elbv2types.LoadBalancer, region string) model.
 }
 
 func mapDBInstance(instance rdstypes.DBInstance, region string) model.Resource {
+	vpcID := ""
+	if instance.DBSubnetGroup != nil {
+		vpcID = derefString(instance.DBSubnetGroup.VpcId)
+	}
+
 	return model.Resource{
 		ID:       derefString(instance.DBInstanceIdentifier),
 		ARN:      derefString(instance.DBInstanceArn),
@@ -94,6 +99,7 @@ func mapDBInstance(instance rdstypes.DBInstance, region string) model.Resource {
 			"engine":         derefString(instance.Engine),
 			"instance_class": derefString(instance.DBInstanceClass),
 			"resource_id":    derefString(instance.DbiResourceId),
+			"vpc_id":         vpcID,
 		},
 	}
 }

@@ -27,6 +27,10 @@ This is designed for runtime use from ARCH UI (for example ARCH running on OCI V
 }
 ```
 
+Notes:
+- `stack_id` and `environment` are optional filters. Omit them to load the full discovered graph.
+- ARCH UI now keeps these filters disabled by default during AWS connect, to avoid accidentally hiding resources.
+
 ## Response
 
 ```json
@@ -47,3 +51,5 @@ This is designed for runtime use from ARCH UI (for example ARCH running on OCI V
   }
 }
 ```
+
+`edges` now includes inferred network topology links (for example `in_subnet`, `part_of`, `in_vpc`) when discovery metadata includes `subnet_id` / `vpc_id`.
