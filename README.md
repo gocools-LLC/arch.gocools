@@ -54,7 +54,8 @@ Deploy backend + frontend to OCI Terraform VMs:
 Optional AWS overlay for OCI deployment:
 
 ```bash
-./scripts/deploy-oci-stack.sh --aws-env-file /path/to/arch.aws.env
+cp ./scripts/arch.aws.env.example /tmp/arch.aws.env
+./scripts/deploy-oci-stack.sh --aws-env-file /tmp/arch.aws.env
 ```
 
 Example `arch.aws.env`:
