@@ -158,6 +158,11 @@ select {
   font-size: 0.9rem;
 }
 
+.subtle {
+  font-size: 0.78rem !important;
+  line-height: 1.35;
+}
+
 .resource-list {
   display: grid;
   gap: 8px;

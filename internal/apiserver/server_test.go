@@ -219,3 +219,42 @@ func TestGraphDiffEndpointSupportsStackFilter(t *testing.T) {
 		t.Fatalf("expected dev-node change, got %+v", payload.Changes[0])
 	}
 }
+
+func TestAWSGraphEndpointMethodNotAllowed(t *testing.T) {
+	handler := New(Config{
+		Version: "test-version",
+		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}).Handler
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/discovery/aws/graph", nil)
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusMethodNotAllowed, res.Code, res.Body.String())
+	}
+}
+
+func TestAWSGraphEndpointRequiresCredentialFields(t *testing.T) {
+	handler := New(Config{
+		Version: "test-version",
+		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}).Handler
+
+	body := `{"region":"us-east-1","access_key_id":"","secret_access_key":""}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/discovery/aws/graph", bytes.NewBufferString(body))
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, res.Code, res.Body.String())
+	}
+
+	var payload errorResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("failed to decode error payload: %v", err)
+	}
+	if payload.Error == "" {
+		t.Fatal("expected non-empty validation error message")
+	}
+}

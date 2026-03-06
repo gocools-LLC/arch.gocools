@@ -7,8 +7,18 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	awscreds "github.com/aws/aws-sdk-go-v2/credentials"
+	ec2api "github.com/aws/aws-sdk-go-v2/service/ec2"
+	ecsapi "github.com/aws/aws-sdk-go-v2/service/ecs"
+	elbv2api "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
+	rdsapi "github.com/aws/aws-sdk-go-v2/service/rds"
+	stsapi "github.com/aws/aws-sdk-go-v2/service/sts"
+	internalaws "github.com/gocools-LLC/arch.gocools/internal/aws"
+	awsdiscovery "github.com/gocools-LLC/arch.gocools/internal/discovery/aws"
 	"github.com/gocools-LLC/arch.gocools/internal/discovery/model"
 	"github.com/gocools-LLC/arch.gocools/internal/drift"
 	"github.com/gocools-LLC/arch.gocools/internal/graph"
@@ -70,6 +80,7 @@ func New(cfg Config) *http.Server {
 	mux.HandleFunc("/healthz", statusHandler(version, "ok"))
 	mux.HandleFunc("/readyz", statusHandler(version, "ready"))
 	mux.HandleFunc("/api/v1/graph", graphHandler(graphService))
+	mux.HandleFunc("/api/v1/discovery/aws/graph", awsGraphHandler())
 	mux.HandleFunc("/api/v1/graph/diff", graphDiffHandler())
 	mux.HandleFunc("/api/v1/drift", driftHandler())
 	mux.HandleFunc("/api/v1/stacks/operations", stackOperationHandler(stackService))
@@ -156,6 +167,33 @@ type graphDiffRequest struct {
 	Environment string      `json:"environment,omitempty"`
 }
 
+type awsGraphRequest struct {
+	Region          string `json:"region"`
+	AccessKeyID     string `json:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key"`
+	SessionToken    string `json:"session_token,omitempty"`
+	RoleARN         string `json:"role_arn,omitempty"`
+	SessionName     string `json:"session_name,omitempty"`
+	ExternalID      string `json:"external_id,omitempty"`
+	StackID         string `json:"stack_id,omitempty"`
+	Environment     string `json:"environment,omitempty"`
+	ValidateOnStart bool   `json:"validate_on_start,omitempty"`
+}
+
+type awsIdentity struct {
+	AccountID string `json:"account_id,omitempty"`
+	ARN       string `json:"arn,omitempty"`
+	UserID    string `json:"user_id,omitempty"`
+}
+
+type awsGraphResponse struct {
+	Connected bool        `json:"connected"`
+	Provider  string      `json:"provider"`
+	Region    string      `json:"region"`
+	Identity  awsIdentity `json:"identity"`
+	Graph     graph.Graph `json:"graph"`
+}
+
 func driftHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -196,6 +234,121 @@ func graphDiffHandler() http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, report)
 	}
+}
+
+func awsGraphHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
+			return
+		}
+
+		var request awsGraphRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json payload"})
+			return
+		}
+
+		request.Region = strings.TrimSpace(request.Region)
+		request.AccessKeyID = strings.TrimSpace(request.AccessKeyID)
+		request.SecretAccessKey = strings.TrimSpace(request.SecretAccessKey)
+		request.SessionToken = strings.TrimSpace(request.SessionToken)
+		request.RoleARN = strings.TrimSpace(request.RoleARN)
+		request.SessionName = strings.TrimSpace(request.SessionName)
+		request.ExternalID = strings.TrimSpace(request.ExternalID)
+		request.StackID = strings.TrimSpace(request.StackID)
+		request.Environment = strings.TrimSpace(request.Environment)
+
+		if request.Region == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "region is required"})
+			return
+		}
+		if request.AccessKeyID == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "access_key_id is required"})
+			return
+		}
+		if request.SecretAccessKey == "" {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "secret_access_key is required"})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+		defer cancel()
+
+		session := internalaws.SessionConfig{
+			Region:      request.Region,
+			RoleARN:     request.RoleARN,
+			SessionName: request.SessionName,
+			ExternalID:  request.ExternalID,
+		}
+
+		loadOptions := []func(*awsconfig.LoadOptions) error{
+			awsconfig.WithRegion(request.Region),
+			awsconfig.WithCredentialsProvider(
+				awscreds.NewStaticCredentialsProvider(request.AccessKeyID, request.SecretAccessKey, request.SessionToken),
+			),
+		}
+
+		if request.ValidateOnStart {
+			if err := internalaws.ValidateCredentials(ctx, session, loadOptions...); err != nil {
+				writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+				return
+			}
+		}
+
+		awsCfg, err := internalaws.LoadConfig(ctx, session, loadOptions...)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+
+		identityOutput, err := stsapi.NewFromConfig(awsCfg).GetCallerIdentity(ctx, &stsapi.GetCallerIdentityInput{})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+
+		discoverer := awsdiscovery.NewDiscoverer(awsdiscovery.Clients{
+			EC2:   ec2api.NewFromConfig(awsCfg),
+			ECS:   ecsapi.NewFromConfig(awsCfg),
+			ELBV2: elbv2api.NewFromConfig(awsCfg),
+			RDS:   rdsapi.NewFromConfig(awsCfg),
+		}, awsdiscovery.Config{
+			Region: request.Region,
+		})
+
+		resources, err := discoverer.DiscoverAll(ctx)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			return
+		}
+
+		discoveredGraph := graph.FromResources(resources, time.Now()).Filter(graph.Query{
+			StackID:     request.StackID,
+			Environment: request.Environment,
+		})
+
+		response := awsGraphResponse{
+			Connected: true,
+			Provider:  "aws",
+			Region:    request.Region,
+			Identity: awsIdentity{
+				AccountID: stringPointerValue(identityOutput.Account),
+				ARN:       stringPointerValue(identityOutput.Arn),
+				UserID:    stringPointerValue(identityOutput.UserId),
+			},
+			Graph: discoveredGraph,
+		}
+
+		writeJSON(w, http.StatusOK, response)
+	}
+}
+
+func stringPointerValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func writeJSON(w http.ResponseWriter, code int, payload any) {

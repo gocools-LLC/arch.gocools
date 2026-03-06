@@ -120,6 +120,31 @@ type StackOperationResponse = {
   };
 };
 
+type AWSConnectRequest = {
+  region: string;
+  access_key_id: string;
+  secret_access_key: string;
+  session_token?: string;
+  role_arn?: string;
+  session_name?: string;
+  external_id?: string;
+  stack_id?: string;
+  environment?: string;
+  validate_on_start?: boolean;
+};
+
+type AWSConnectResponse = {
+  connected: boolean;
+  provider: string;
+  region: string;
+  identity: {
+    account_id?: string;
+    arn?: string;
+    user_id?: string;
+  };
+  graph: GraphSnapshot;
+};
+
 type ErrorPayload = {
   error?: string;
 };
@@ -405,13 +430,23 @@ export default function App() {
   const [dryRun, setDryRun] = useState(true);
   const [confirmDestroy, setConfirmDestroy] = useState(false);
   const [manualOverride, setManualOverride] = useState(false);
+  const [awsRegion, setAwsRegion] = useState("us-east-1");
+  const [awsAccessKeyID, setAwsAccessKeyID] = useState("");
+  const [awsSecretAccessKey, setAwsSecretAccessKey] = useState("");
+  const [awsSessionToken, setAwsSessionToken] = useState("");
+  const [awsRoleARN, setAwsRoleARN] = useState("");
+  const [awsSessionName, setAwsSessionName] = useState("arch-ui-session");
+  const [awsExternalID, setAwsExternalID] = useState("");
+  const [awsValidateOnConnect, setAwsValidateOnConnect] = useState(true);
 
   const [status, setStatus] = useState("Canvas ready.");
   const [liveGraphSnapshot, setLiveGraphSnapshot] = useState<GraphSnapshot | null>(null);
   const [diffReport, setDiffReport] = useState<GraphDiffReport | null>(null);
   const [lastOperation, setLastOperation] = useState<StackOperationResponse | null>(null);
+  const [awsConnection, setAwsConnection] = useState<AWSConnectResponse | null>(null);
   const [isPlanning, setIsPlanning] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
+  const [isConnectingAWS, setIsConnectingAWS] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -427,6 +462,13 @@ export default function App() {
   const trimmedEnvironment = environmentFilter.trim();
   const trimmedActor = actor.trim();
   const trimmedOwner = operationOwner.trim();
+  const trimmedAWSRegion = awsRegion.trim();
+  const trimmedAWSAccessKeyID = awsAccessKeyID.trim();
+  const trimmedAWSSecretAccessKey = awsSecretAccessKey.trim();
+  const trimmedAWSSessionToken = awsSessionToken.trim();
+  const trimmedAWSRoleARN = awsRoleARN.trim();
+  const trimmedAWSSessionName = awsSessionName.trim();
+  const trimmedAWSExternalID = awsExternalID.trim();
 
   const nodeTagGuardrails = useMemo(
     () => buildNodeTagGuardrails(nodes, trimmedStack, trimmedEnvironment),
@@ -746,6 +788,80 @@ export default function App() {
     }
   }
 
+  async function connectAWSAndLoadGraph(): Promise<void> {
+    if (trimmedAWSRegion === "") {
+      setStatus("AWS region is required.");
+      return;
+    }
+    if (trimmedAWSAccessKeyID === "") {
+      setStatus("AWS access key ID is required.");
+      return;
+    }
+    if (trimmedAWSSecretAccessKey === "") {
+      setStatus("AWS secret access key is required.");
+      return;
+    }
+
+    setIsConnectingAWS(true);
+    try {
+      const requestBody: AWSConnectRequest = {
+        region: trimmedAWSRegion,
+        access_key_id: trimmedAWSAccessKeyID,
+        secret_access_key: trimmedAWSSecretAccessKey,
+        validate_on_start: awsValidateOnConnect
+      };
+
+      if (trimmedAWSSessionToken !== "") {
+        requestBody.session_token = trimmedAWSSessionToken;
+      }
+      if (trimmedAWSRoleARN !== "") {
+        requestBody.role_arn = trimmedAWSRoleARN;
+      }
+      if (trimmedAWSSessionName !== "") {
+        requestBody.session_name = trimmedAWSSessionName;
+      }
+      if (trimmedAWSExternalID !== "") {
+        requestBody.external_id = trimmedAWSExternalID;
+      }
+      if (trimmedStack !== "") {
+        requestBody.stack_id = trimmedStack;
+      }
+      if (trimmedEnvironment !== "") {
+        requestBody.environment = trimmedEnvironment;
+      }
+
+      const response = await fetch("/api/v1/discovery/aws/graph", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseApiError(response));
+      }
+
+      const payload = (await response.json()) as AWSConnectResponse;
+      const mapped = mapGraphToCanvas(payload.graph);
+      setNodes(mapped.nodes);
+      setEdges(mapped.edges);
+      setLiveGraphSnapshot(payload.graph);
+      setDiffReport(null);
+      setSelectedNodeId(null);
+      setConnectFromId(null);
+      setAwsConnection(payload);
+
+      const account = payload.identity?.account_id || "unknown-account";
+      setStatus(`Connected to AWS ${account} and loaded ${mapped.nodes.length} resources.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(`AWS connect failed: ${message}`);
+    } finally {
+      setIsConnectingAWS(false);
+    }
+  }
+
   async function generatePlan(): Promise<void> {
     if (nodeTagGuardrails.blocking.length > 0) {
       setStatus(`Plan blocked: ${nodeTagGuardrails.blocking[0]}`);
@@ -1040,6 +1156,66 @@ export default function App() {
             Environment
             <input value={environmentFilter} onChange={(event) => setEnvironmentFilter(event.target.value)} />
           </label>
+
+          <h3>Cloud Connection</h3>
+          <p className="subtle">
+            Run ARCH on OCI and connect to AWS using temporary credentials or a role.
+          </p>
+          <label>
+            AWS Region
+            <input value={awsRegion} onChange={(event) => setAwsRegion(event.target.value)} />
+          </label>
+          <label>
+            Access Key ID
+            <input value={awsAccessKeyID} onChange={(event) => setAwsAccessKeyID(event.target.value)} />
+          </label>
+          <label>
+            Secret Access Key
+            <input
+              type="password"
+              value={awsSecretAccessKey}
+              onChange={(event) => setAwsSecretAccessKey(event.target.value)}
+            />
+          </label>
+          <label>
+            Session Token (optional)
+            <input
+              type="password"
+              value={awsSessionToken}
+              onChange={(event) => setAwsSessionToken(event.target.value)}
+            />
+          </label>
+          <label>
+            Role ARN (optional)
+            <input value={awsRoleARN} onChange={(event) => setAwsRoleARN(event.target.value)} />
+          </label>
+          <label>
+            External ID (optional)
+            <input value={awsExternalID} onChange={(event) => setAwsExternalID(event.target.value)} />
+          </label>
+          <label>
+            Session Name (optional)
+            <input value={awsSessionName} onChange={(event) => setAwsSessionName(event.target.value)} />
+          </label>
+          <label className="checkline">
+            <input
+              type="checkbox"
+              checked={awsValidateOnConnect}
+              onChange={(event) => setAwsValidateOnConnect(event.target.checked)}
+            />
+            Validate Credentials
+          </label>
+          <button className="solid" disabled={isConnectingAWS} onClick={connectAWSAndLoadGraph}>
+            {isConnectingAWS ? "Connecting..." : "Connect AWS + Load Graph"}
+          </button>
+          {awsConnection ? (
+            <div className="guard-ok">
+              <p>
+                Connected: {awsConnection.identity.account_id || "unknown-account"} ({awsConnection.region})
+              </p>
+              <p>{awsConnection.identity.arn || "identity ARN unavailable"}</p>
+            </div>
+          ) : null}
 
           <h3>Control Plane</h3>
           <label>

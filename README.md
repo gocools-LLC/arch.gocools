@@ -96,6 +96,7 @@ gocools:owner
 - [Architecture](docs/architecture.md)
 - [Graph Schema](docs/graph-schema.md)
 - [Graph API](docs/api/graph.md)
+- [AWS Discovery Graph API](docs/api/aws-discovery-graph.md)
 - [Graph Diff API](docs/api/graph-diff.md)
 - [AWS Discovery Engine](docs/discovery-engine.md)
 - [Terraform State Import](docs/terraform-import.md)
