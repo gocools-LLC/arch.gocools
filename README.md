@@ -26,6 +26,17 @@ curl -s -X POST localhost:8081/api/v1/drift \
 make smoke-local
 ```
 
+Use AWS-backed discovery (instead of static demo resources):
+
+```bash
+ARCH_DISCOVERY_MODE=aws \
+ARCH_AWS_REGION=us-east-1 \
+ARCH_AWS_ROLE_ARN=arn:aws:iam::123456789012:role/arch-observer \
+ARCH_AWS_SESSION_NAME=arch-session \
+ARCH_AWS_VALIDATE_ON_START=true \
+go run ./cmd/arch
+```
+
 ## Repository Layout
 
 - `cmd/arch`: CLI entrypoint.

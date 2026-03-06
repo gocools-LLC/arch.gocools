@@ -2,6 +2,23 @@
 
 Arch discovery is implemented in `internal/discovery/aws`.
 
+## Runtime Modes
+
+Arch supports two graph-discovery modes:
+
+- `ARCH_DISCOVERY_MODE=static` (default): serves deterministic built-in demo resources
+- `ARCH_DISCOVERY_MODE=aws`: queries live AWS APIs through the discovery engine
+
+For AWS mode:
+
+- `ARCH_AWS_REGION` (or `AWS_REGION`) should be set
+- optional role assumption is supported via:
+  - `ARCH_AWS_ROLE_ARN`
+  - `ARCH_AWS_SESSION_NAME`
+  - `ARCH_AWS_EXTERNAL_ID`
+- optional startup credential validation:
+  - `ARCH_AWS_VALIDATE_ON_START=true`
+
 ## Covered Services (MVP)
 
 - EC2 (`DescribeInstances`)

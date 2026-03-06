@@ -20,7 +20,7 @@ trap cleanup EXIT
 cd "${ROOT_DIR}"
 
 echo "Starting Arch smoke target on ${BASE_URL}..."
-ARCH_HTTP_ADDR=":${PORT}" go run ./cmd/arch >"${LOG_PATH}" 2>&1 &
+ARCH_HTTP_ADDR=":${PORT}" ARCH_DISCOVERY_MODE=static go run ./cmd/arch >"${LOG_PATH}" 2>&1 &
 ARCH_PID=$!
 
 READY=0
